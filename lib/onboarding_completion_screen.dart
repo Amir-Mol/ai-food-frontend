@@ -2,8 +2,26 @@ import 'package:flutter/material.dart';
 import 'package:ai_food_app/home_screen.dart'; // Import the HomeScreen
 
 
-class OnboardingCompletionScreen extends StatelessWidget {
+class OnboardingCompletionScreen extends StatefulWidget {
   const OnboardingCompletionScreen({super.key});
+
+  @override
+  State<OnboardingCompletionScreen> createState() => _OnboardingCompletionScreenState();
+}
+
+class _OnboardingCompletionScreenState extends State<OnboardingCompletionScreen> {
+  // State variable for the mandatory consent checkbox.
+  bool _dataProcessingConsentGiven = false;
+
+  // Function to navigate to the home screen.
+  void _completeOnboardingFunction() {
+    // Navigate to HomeScreen and remove all previous routes.
+    Navigator.pushAndRemoveUntil(
+      context,
+      MaterialPageRoute(builder: (context) => const HomeScreen()),
+      (Route<dynamic> route) => false,
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -52,18 +70,24 @@ class OnboardingCompletionScreen extends StatelessWidget {
                    ),
                 ),
               ),
-              const Spacer(), // Pushes elements below to the bottom.
-              FilledButton(
-                onPressed: () {
-                  print('Explore Recommendations tapped. Navigate to HomeScreen.');
-                  // Navigate to HomeScreen and remove all previous routes.
-                  Navigator.pushAndRemoveUntil(
-                    context,
-                    MaterialPageRoute(
-                        builder: (context) => const HomeScreen()),
-                    (Route<dynamic> route) => false,
-                  );
+              const Spacer(), // Pushes elements below to the bottom
+              CheckboxListTile(
+                title: const Text(
+                  "I consent to the processing of my personal data (including dietary and health information) to provide AI-powered food recommendations as described in the Privacy Policy.",
+                ),
+                value: _dataProcessingConsentGiven,
+                onChanged: (bool? value) {
+                  setState(() {
+                    _dataProcessingConsentGiven = value ?? false;
+                  });
                 },
+                controlAffinity: ListTileControlAffinity.leading,
+                contentPadding: EdgeInsets.zero,
+              ),
+              const SizedBox(height: 16.0),
+              FilledButton(
+                // Button is disabled until consent is given.
+                onPressed: _dataProcessingConsentGiven ? _completeOnboardingFunction : null,
                 style: FilledButton.styleFrom(
                   backgroundColor: colorScheme.primary,
                   foregroundColor: colorScheme.onPrimary,

@@ -32,7 +32,8 @@ class _CreateAccountScreenState extends State<CreateAccountScreen> {
   // State variable to track loading state for API calls.
   bool _isLoading = false;
   // State variable to track if the user has agreed to terms and conditions.
-  bool _agreedToTerms = false;
+  bool _termsOfServiceAgreed = false;
+  bool _privacyPolicyAgreed = false;
 
   @override
   void initState() {
@@ -68,10 +69,10 @@ class _CreateAccountScreenState extends State<CreateAccountScreen> {
 
   // Handles the form submission for account creation.
   Future<void> _submitForm() async {
-    if (!_agreedToTerms) {
+    if (!_termsOfServiceAgreed || !_privacyPolicyAgreed) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Please agree to the terms and conditions.'),
+          content: Text('Please agree to both the Terms of Service and Privacy Policy.'),
           backgroundColor: Colors.redAccent,
         ),
       );
@@ -261,72 +262,60 @@ class _CreateAccountScreenState extends State<CreateAccountScreen> {
                     },
                   ),
                   const SizedBox(height: 16.0),
-                  Row(
-                    // Row for the "Agree to Terms" checkbox and text.
-                    crossAxisAlignment: CrossAxisAlignment.center,
-                    children: <Widget>[
-                      Checkbox(
-                        // Checkbox for agreeing to terms.
-                        value: _agreedToTerms,
-                        onChanged: (bool? value) {
-                          setState(() {
-                            _agreedToTerms = value ?? false;
-                          });
-                        },
-                        activeColor: colorScheme.primary,
-                        visualDensity: VisualDensity.compact, // Makes checkbox slightly smaller
-                      ),
-                      Expanded(
-                        // RichText for "Terms of Service" and "Privacy Policy" links.
-                        child: Text.rich(
-                          TextSpan(
-                            style: theme.textTheme.bodyMedium?.copyWith(color: colorScheme.onSurfaceVariant),
-                            children: <TextSpan>[
-                              const TextSpan(text: 'I agree to the '),
-                              TextSpan(
-                                text: 'Terms of Service',
-                                style: TextStyle(
-                                  color: colorScheme.primary,
-                                  decoration: TextDecoration.underline,
-                                ),
-                                recognizer: TapGestureRecognizer()
-                                  ..onTap = () {
-                                    Navigator.push(
-                                      context,
-                                      MaterialPageRoute(
-                                          builder: (context) =>
-                                              const TermsOfServiceScreen()),
-                                    );
-                                  },
-                              ),
-                              const TextSpan(text: ' and '),
-                              TextSpan(
-                                text: 'Privacy Policy',
-                                style: TextStyle(
-                                  color: colorScheme.primary,
-                                  decoration: TextDecoration.underline,
-                                ),
-                                recognizer: TapGestureRecognizer()
-                                  ..onTap = () {
-                                    Navigator.push(
-                                      context,
-                                      MaterialPageRoute(
-                                          builder: (context) =>
-                                              const PrivacyPolicyScreen()),
-                                    );
-                                  },
-                              ),
-                              const TextSpan(text: '.'),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ],
+                  CheckboxListTile(
+                    title: Text(
+                      'I agree to the Terms of Service',
+                      style: theme.textTheme.bodyMedium?.copyWith(color: colorScheme.onSurfaceVariant),
+                    ),
+                    value: _termsOfServiceAgreed,
+                    onChanged: (bool? value) {
+                      setState(() {
+                        _termsOfServiceAgreed = value ?? false;
+                      });
+                    },
+                    activeColor: colorScheme.primary,
+                    controlAffinity: ListTileControlAffinity.leading,
+                    contentPadding: EdgeInsets.zero,
+                    visualDensity: VisualDensity.compact,
+                    secondary: IconButton(
+                      icon: Icon(Icons.info_outline, color: colorScheme.primary),
+                      onPressed: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (context) => const TermsOfServiceScreen()),
+                        );
+                      },
+                    ),
+                  ),
+                  CheckboxListTile(
+                    title: Text(
+                      'I agree to the Privacy Policy',
+                      style: theme.textTheme.bodyMedium?.copyWith(color: colorScheme.onSurfaceVariant),
+                    ),
+                    value: _privacyPolicyAgreed,
+                    onChanged: (bool? value) {
+                      setState(() {
+                        _privacyPolicyAgreed = value ?? false;
+                      });
+                    },
+                    activeColor: colorScheme.primary,
+                    controlAffinity: ListTileControlAffinity.leading,
+                    contentPadding: EdgeInsets.zero,
+                    visualDensity: VisualDensity.compact,
+                    secondary: IconButton(
+                      icon: Icon(Icons.info_outline, color: colorScheme.primary),
+                      onPressed: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (context) => const PrivacyPolicyScreen()),
+                        );
+                      },
+                    ),
                   ),
                   const SizedBox(height: 24.0),
                   FilledButton(
                     // Primary registration button.
-                    onPressed: _submitForm,
+                    onPressed: (_termsOfServiceAgreed && _privacyPolicyAgreed) ? _submitForm : null,
                     style: FilledButton.styleFrom(
                       backgroundColor: colorScheme.primary,
                       foregroundColor: colorScheme.onPrimary,
