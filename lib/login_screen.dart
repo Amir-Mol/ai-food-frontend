@@ -350,35 +350,35 @@ final GoogleSignIn _googleSignIn = GoogleSignIn(
                           )
                         : const Text('Login'),
                   ),
-                  const SizedBox(height: 24.0),
-                  Row(
-                    // "OR" divider for alternative login methods.
-                    children: <Widget>[
-                      const Expanded(child: Divider()),
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 8.0),
-                        child: Text('OR', style: theme.textTheme.bodySmall?.copyWith(color: colorScheme.onSurfaceVariant)),
-                      ),
-                      const Expanded(child: Divider()),
-                    ],
-                  ),
-                  const SizedBox(height: 24.0),
-                  OutlinedButton.icon(
-                    // "Sign in with Google" button.
-                    icon: Image.asset(
-                      'assets/images/google_logo.png', // Path to your Google logo
-                      height: 24.0, // Adjust height as needed
-                    ),
-                    label: const Text('Continue with Google'),
-                    onPressed: _isLoading ? null : _handleGoogleSignIn,
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: colorScheme.primary,
-                      padding: const EdgeInsets.symmetric(vertical: 12.0),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)), // Pill shape
-                      side: BorderSide(color: colorScheme.outline),
-                    ),
-                  ),
-                  const SizedBox(height: 24.0),
+                  // const SizedBox(height: 24.0),
+                  // Row(
+                  //   // "OR" divider for alternative login methods.
+                  //   children: <Widget>[
+                  //     const Expanded(child: Divider()),
+                  //     Padding(
+                  //       padding: const EdgeInsets.symmetric(horizontal: 8.0),
+                  //       child: Text('OR', style: theme.textTheme.bodySmall?.copyWith(color: colorScheme.onSurfaceVariant)),
+                  //     ),
+                  //     const Expanded(child: Divider()),
+                  //   ],
+                  // ),
+                  // const SizedBox(height: 24.0),
+                  // OutlinedButton.icon(
+                  //   // "Sign in with Google" button.
+                  //   icon: Image.asset(
+                  //     'assets/images/google_logo.png', // Path to your Google logo
+                  //     height: 24.0, // Adjust height as needed
+                  //   ),
+                  //   label: const Text('Continue with Google'),
+                  //   onPressed: _isLoading ? null : _handleGoogleSignIn,
+                  //   style: OutlinedButton.styleFrom(
+                  //     foregroundColor: colorScheme.primary,
+                  //     padding: const EdgeInsets.symmetric(vertical: 12.0),
+                  //     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)), // Pill shape
+                  //     side: BorderSide(color: colorScheme.outline),
+                  //   ),
+                  // ),
+                  const SizedBox(height: 16.0),
                   TextButton(
                     // Link to navigate to the Create Account screen.
                     onPressed: _isLoading ? null : () {

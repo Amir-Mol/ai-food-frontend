@@ -134,21 +134,21 @@ class _OnboardingBasicProfileScreenState
       final url = Uri.parse('${AppConfig.apiBaseUrl}/api/user/profile');
       
       // Basic parsing for height and weight. A more robust solution would use separate fields.
-      final heightParts = _heightController.text.split(' ');
+      // final heightParts = _heightController.text.split(' ');
       final weightParts = _weightController.text.split(' ');
 
       final requestBody = {
         'age': int.tryParse(_ageController.text),
         'gender': _selectedGender,
-        'height': double.tryParse(heightParts.first),
-        'heightUnit': heightParts.length > 1 ? heightParts.last : null,
+        'height': null, // Was: double.tryParse(heightParts.first),
+        'heightUnit': null, // Was: heightParts.length > 1 ? heightParts.last : null,
         'weight': double.tryParse(weightParts.first),
         'weightUnit': weightParts.length > 1 ? weightParts.last : null,
         'activityLevel': _selectedActivityLevel,
       };
 
       // Remove null values from the map before encoding
-      requestBody.removeWhere((key, value) => value == null);
+      // requestBody.removeWhere((key, value) => value == null); // Comment this out so explicit nulls are sent
 
       final response = await http.patch(
         url,
@@ -253,15 +253,18 @@ class _OnboardingBasicProfileScreenState
                     dropdownColor: colorScheme.surfaceContainerHighest,
                   ),
                   const SizedBox(height: 16.0),
-                  TextFormField(
-                    controller: _heightController,
-                    decoration: _m3FilledInputDecoration(
-                      labelText: 'Height',
-                      hintText: 'e.g., 175 cm',
-                      colorScheme: colorScheme,
+                  Visibility(
+                    visible: false,
+                    child: TextFormField(
+                      controller: _heightController,
+                      decoration: _m3FilledInputDecoration(
+                        labelText: 'Height',
+                        hintText: 'e.g., 175 cm',
+                        colorScheme: colorScheme,
+                      ),
+                      keyboardType: TextInputType.text,
+                      validator: (value) => (value == null || value.isEmpty) ? 'Please enter your height.' : null,
                     ),
-                    keyboardType: TextInputType.text,
-                    validator: (value) => (value == null || value.isEmpty) ? 'Please enter your height.' : null,
                   ),
                   const SizedBox(height: 16.0),
                   TextFormField(

@@ -104,6 +104,15 @@ class _OnboardingDietaryNeedsScreenState
   }
 
   Future<void> _submitForm() async {
+    // Ensure hidden data is cleared before submission
+    setState(() {
+      _selectedFoodAllergies.clear();
+      _otherAllergyController.clear();
+      // Also clear health conditions as that section is also hidden
+      _selectedHealthConditions.clear();
+      _otherConditionController.clear();
+    });
+
     setState(() {
       _isLoading = true;
     });
@@ -224,6 +233,8 @@ class _OnboardingDietaryNeedsScreenState
                       _buildCheckboxListTile(vegan, _selectedDietaryRestrictions, colorScheme),
                       _buildCheckboxListTile(vegetarian, _selectedDietaryRestrictions, colorScheme),
                       _buildCheckboxListTile(noPork, _selectedDietaryRestrictions, colorScheme),
+                      _buildCheckboxListTile('No Peanuts', _selectedDietaryRestrictions, colorScheme),
+                      _buildCheckboxListTile('No Tree Nuts', _selectedDietaryRestrictions, colorScheme),
                       const SizedBox(height: 8.0), // Reduced space before "Other" field
                       TextFormField(
                         controller: _otherRestrictionController,
@@ -238,69 +249,75 @@ class _OnboardingDietaryNeedsScreenState
                 const SizedBox(height: 16.0), // Reduced space between sections
 
                 // Food Allergies Section
-                DottedBorder(
-                  borderType: BorderType.RRect,
-                  radius: const Radius.circular(8),
-                  dashPattern: const [6, 3],
-                  color: colorScheme.outline.withOpacity(0.6),
-                  strokeWidth: 1,
-                  padding: const EdgeInsets.all(12),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      Text('Food Allergies:',
-                          style: theme.textTheme.titleMedium?.copyWith(
-                              color: colorScheme.onSurface,
-                              fontWeight: FontWeight.bold // Make title bold
-                          )),
-                      const SizedBox(height: 8.0), // Keep some space below title
-                      _buildCheckboxListTile(peanuts, _selectedFoodAllergies, colorScheme),
-                      _buildCheckboxListTile(treeNuts, _selectedFoodAllergies, colorScheme),
-                      _buildCheckboxListTile(shellfish, _selectedFoodAllergies, colorScheme),
-                      _buildCheckboxListTile(eggs, _selectedFoodAllergies, colorScheme),
-                      const SizedBox(height: 8.0), // Reduced space before "Other" field
-                      TextFormField(
-                        controller: _otherAllergyController,
-                        decoration: _m3FilledInputDecoration(
-                          labelText: 'Other allergy...',
-                          colorScheme: colorScheme,
+                Visibility(
+                  visible: false,
+                  child: DottedBorder(
+                    borderType: BorderType.RRect,
+                    radius: const Radius.circular(8),
+                    dashPattern: const [6, 3],
+                    color: colorScheme.outline.withOpacity(0.6),
+                    strokeWidth: 1,
+                    padding: const EdgeInsets.all(12),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Text('Food Allergies:',
+                            style: theme.textTheme.titleMedium?.copyWith(
+                                color: colorScheme.onSurface,
+                                fontWeight: FontWeight.bold // Make title bold
+                            )),
+                        const SizedBox(height: 8.0), // Keep some space below title
+                        _buildCheckboxListTile(peanuts, _selectedFoodAllergies, colorScheme),
+                        _buildCheckboxListTile(treeNuts, _selectedFoodAllergies, colorScheme),
+                        _buildCheckboxListTile(shellfish, _selectedFoodAllergies, colorScheme),
+                        _buildCheckboxListTile(eggs, _selectedFoodAllergies, colorScheme),
+                        const SizedBox(height: 8.0), // Reduced space before "Other" field
+                        TextFormField(
+                          controller: _otherAllergyController,
+                          decoration: _m3FilledInputDecoration(
+                            labelText: 'Other allergy...',
+                            colorScheme: colorScheme,
+                          ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
                 const SizedBox(height: 16.0), // Reduced space between sections
 
-                // // Health Conditions Section
-                // DottedBorder(
-                //   borderType: BorderType.RRect,
-                //   radius: const Radius.circular(8),
-                //   dashPattern: const [6, 3],
-                //   color: colorScheme.outline.withOpacity(0.6),
-                //   strokeWidth: 1,
-                //   padding: const EdgeInsets.all(12),
-                //   child: Column(
-                //     crossAxisAlignment: CrossAxisAlignment.stretch,
-                //     children: [
-                //       Text('Health Conditions Affecting Diet:',
-                //           style: theme.textTheme.titleMedium?.copyWith(
-                //               color: colorScheme.onSurface,
-                //               fontWeight: FontWeight.bold // Make title bold
-                //           )),
-                //       const SizedBox(height: 8.0), // Keep some space below title
-                //       _buildCheckboxListTile(diabetes, _selectedHealthConditions, colorScheme),
-                //       _buildCheckboxListTile(hypertension, _selectedHealthConditions, colorScheme),
-                //       const SizedBox(height: 8.0), // Reduced space before "Other" field
-                //       TextFormField(
-                //         controller: _otherConditionController,
-                //         decoration: _m3FilledInputDecoration(
-                //           labelText: 'Other condition...',
-                //           colorScheme: colorScheme,
-                //         ),
-                //       ),
-                //     ],
-                //   ),
-                // ),
+                // Health Conditions Section
+                Visibility(
+                  visible: false,
+                  child: DottedBorder(
+                    borderType: BorderType.RRect,
+                    radius: const Radius.circular(8),
+                    dashPattern: const [6, 3],
+                    color: colorScheme.outline.withOpacity(0.6),
+                    strokeWidth: 1,
+                    padding: const EdgeInsets.all(12),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Text('Health Conditions Affecting Diet:',
+                            style: theme.textTheme.titleMedium?.copyWith(
+                                color: colorScheme.onSurface,
+                                fontWeight: FontWeight.bold // Make title bold
+                            )),
+                        const SizedBox(height: 8.0), // Keep some space below title
+                        _buildCheckboxListTile(diabetes, _selectedHealthConditions, colorScheme),
+                        _buildCheckboxListTile(hypertension, _selectedHealthConditions, colorScheme),
+                        const SizedBox(height: 8.0), // Reduced space before "Other" field
+                        TextFormField(
+                          controller: _otherConditionController,
+                          decoration: _m3FilledInputDecoration(
+                            labelText: 'Other condition...',
+                            colorScheme: colorScheme,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
 
                 // Space before the button and progress text
                 const SizedBox(height: 8.0), // Reduced space before button

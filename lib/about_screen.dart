@@ -91,7 +91,7 @@ class _AboutScreenState extends State<AboutScreen> {
               ),
               const SizedBox(height: 8.0),
               Text(
-                "This AI-Powered Food Recommendation App is designed to provide personalized and healthy food choices based on your unique profile and preferences. Our goal is to make healthy eating easy, enjoyable, and perfectly suited to your lifestyle.",
+                "This AI-Powered Food Recommendation App is a research prototype. We are studying how AI can help people make healthier, more personalized food choices tailored to their lifestyles. By using this app, you are contributing to academic research on nutrition and technology.",
                 style: theme.textTheme.bodyMedium
                     ?.copyWith(color: colorScheme.onSurface),
               ),

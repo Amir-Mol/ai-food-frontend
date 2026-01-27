@@ -161,22 +161,22 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         return;
       }
 
-      final heightParts = _heightController.text.split(' ');
+      // final heightParts = _heightController.text.split(' ');
       final weightParts = _weightController.text.split(' ');
 
       final requestBody = {
         'name': _nameController.text,
         'age': int.tryParse(_ageController.text),
         'gender': _selectedGender,
-        'height': double.tryParse(heightParts.first),
-        'heightUnit': heightParts.length > 1 ? heightParts.last : null,
+        'height': null,
+        'heightUnit': null,
         'weight': double.tryParse(weightParts.first),
         'weightUnit': weightParts.length > 1 ? weightParts.last : null,
         'activityLevel': _selectedActivityLevel,
       };
 
       // Remove null values from the map before encoding
-      requestBody.removeWhere((key, value) => value == null);
+      // requestBody.removeWhere((key, value) => value == null);
 
       final url = Uri.parse('${AppConfig.apiBaseUrl}/api/user/profile');
       final response = await http.patch(
@@ -284,11 +284,14 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                     dropdownColor: colorScheme.surfaceContainerHighest,
                   ),
                   const SizedBox(height: 16.0),
-                  TextFormField(
-                    controller: _heightController,
-                    decoration: _m3FilledInputDecoration(labelText: 'Height', hintText: 'e.g., 175 cm', colorScheme: colorScheme),
-                    keyboardType: TextInputType.text, // Can be number with unit or just text
-                    validator: (value) => (value == null || value.isEmpty) ? 'Please enter your height.' : null,
+                  Visibility(
+                    visible: false,
+                    child: TextFormField(
+                      controller: _heightController,
+                      decoration: _m3FilledInputDecoration(labelText: 'Height', hintText: 'e.g., 175 cm', colorScheme: colorScheme),
+                      keyboardType: TextInputType.text, // Can be number with unit or just text
+                      validator: (value) => (value == null || value.isEmpty) ? 'Please enter your height.' : null,
+                    ),
                   ),
                   const SizedBox(height: 16.0),
                   TextFormField(

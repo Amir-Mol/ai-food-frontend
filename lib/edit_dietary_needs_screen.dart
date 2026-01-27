@@ -29,7 +29,8 @@ class _EditDietaryNeedsScreenState extends State<EditDietaryNeedsScreen> {
   // --- Options for Checkboxes (similar to onboarding) ---
   // Dietary Restrictions
   final List<String> _dietaryRestrictionOptions = [
-    'Vegan', 'Vegetarian', 'Pescatarian', 'Gluten-Free', 'Lactose-Free', 'No Pork'
+    'Vegan', 'Vegetarian', 'Pescatarian', 'Gluten-Free', 'Lactose-Free', 'No Pork',
+    'No Peanuts', 'No Tree Nuts'
   ];
   // Food Allergies
   final List<String> _foodAllergyOptions = [
@@ -201,6 +202,14 @@ class _EditDietaryNeedsScreenState extends State<EditDietaryNeedsScreen> {
   }
 
   Future<void> _saveChanges() async {
+    setState(() {
+      _selectedFoodAllergies.clear();
+      _otherAllergyController.clear();
+      // Health conditions are not currently built in build(), but good practice to clear them too if they are intended to be hidden.
+      _selectedHealthConditions.clear();
+      _otherConditionController.clear();
+    });
+
     setState(() => _isSaving = true);
 
     const storage = FlutterSecureStorage();
@@ -310,13 +319,16 @@ class _EditDietaryNeedsScreenState extends State<EditDietaryNeedsScreen> {
                 ),
                 const SizedBox(height: 16.0),
 
-                _buildSection(
-                  context: context,
-                  title: 'Food Allergies:',
-                  options: _foodAllergyOptions,
-                  selectedSet: _selectedFoodAllergies,
-                  otherController: _otherAllergyController,
-                  otherLabel: 'Other allergy...',
+                Visibility(
+                  visible: false,
+                  child: _buildSection(
+                    context: context,
+                    title: 'Food Allergies:',
+                    options: _foodAllergyOptions,
+                    selectedSet: _selectedFoodAllergies,
+                    otherController: _otherAllergyController,
+                    otherLabel: 'Other allergy...',
+                  ),
                 ),
                 const SizedBox(height: 16.0),
 

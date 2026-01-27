@@ -4,11 +4,12 @@ class AppConfig {
   
   // --- The Switch ---
   // Set to 'false' for local development (to use 10.0.2.2)
-  // Set to 'true' for production (to use the live Render URL)
+  // Set to 'true' for production (tto use the live Rahti URL)
   static const bool isProduction = true; 
 
   // --- URLs ---
-  static const String _productionUrl = 'https://ai-food-backend-m8ty.onrender.com';
+  //static const String _productionUrl = 'https://ai-food-backend-m8ty.onrender.com';
+  static const String _productionUrl = "https://backend-app-nutrirecom.2.rahtiapp.fi";
   static const String _developmentUrl = 'http://10.0.2.2:8000';
 
   // --- The Final URL ---
