@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:convert';
 
 import 'package:ai_food_app/recommendation_detail_screen.dart'; // Import the detail screen
 import 'package:ai_food_app/profile_settings_screen.dart'; // Import ProfileSettingsScreen
@@ -7,6 +9,7 @@ import 'package:ai_food_app/home_screen.dart'; // Import HomeScreen
 import 'package:ai_food_app/recommendation_history_screen.dart';
 import 'package:ai_food_app/ai_recommendation.dart';
 import 'package:ai_food_app/widgets/compact_fsa_score_bar.dart';
+import 'package:ai_food_app/services/notification_service.dart';
 
 /// Displays a list of food recommendations.
 class RecommendationResultsScreen extends StatefulWidget {
@@ -31,6 +34,22 @@ class _RecommendationResultsScreenState
     super.initState();
     // Create a mutable copy of the recommendations to allow for removal.
     _localRecommendations = List.from(widget.recommendations);
+  }
+
+  Future<void> _updateCachedRecommendations() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      if (_localRecommendations.isEmpty) {
+        // If the list is empty, delete the cache key
+        await prefs.remove('cached_recommendations');
+      } else {
+        // Update the cache with the remaining recommendations
+        final jsonList = _localRecommendations.map((rec) => rec.toJson()).toList();
+        await prefs.setString('cached_recommendations', jsonEncode(jsonList));
+      }
+    } catch (e) {
+      print('Error updating cached recommendations: $e');
+    }
   }
 
   @override
@@ -82,8 +101,14 @@ class _RecommendationResultsScreenState
                     // Remove the item from the list first.
                     _localRecommendations.remove(recommendation);
 
+                    // Update the cache
+                    await _updateCachedRecommendations();
+
                     // Check if the list is now empty.
                     if (_localRecommendations.isEmpty) {
+                      // Schedule notification for batch complete (Tomorrow at 6 PM)
+                      await NotificationService().scheduleBatchCompleteNotification();
+                      
                       // If it's the last recommendation, navigate to the HomeScreen
                       // and clear the navigation stack.
                       Navigator.pushAndRemoveUntil(

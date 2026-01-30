@@ -1,9 +1,15 @@
 import 'package:flutter/material.dart';
-import 'package:ai_food_app/auth_check_screen.dart'; // Import the new AuthCheckScreen
+import 'package:ai_food_app/auth_check_screen.dart';
+import 'package:ai_food_app/services/notification_service.dart';
 
 // The main entry point of the application.
-void main() {
-  runApp(const MyApp()); // Inflates the given widget and attaches it to the screen.
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  
+  // Initialize notification service
+  await NotificationService().initialize();
+  
+  runApp(const MyApp());
 }
 
 // MyApp is the root widget of the application.
