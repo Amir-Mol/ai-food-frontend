@@ -43,11 +43,14 @@ android {
         }
     }
 	
-    buildTypes {
+buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("release")
+            // 1. Disable code shrinking (Kotlin DSL Syntax)
+            isMinifyEnabled = false
+            isShrinkResources = false
+
+            // 2. Use Debug Signing
+            signingConfig = signingConfigs.getByName("debug")
         }
     }
 }

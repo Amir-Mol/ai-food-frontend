@@ -20,43 +20,68 @@ class NotificationService {
     _flutterLocalNotificationsPlugin = FlutterLocalNotificationsPlugin();
   }
 
-  Future<void> initialize() async {
-    // 1. Initialize the database
-    tzdata.initializeTimeZones();
-
-    // 2. THE SHORTCUT: Hardcode Finland Time 🇫🇮
-    // This works on your Emulator, on participants' phones, everywhere.
-    // No more "Kiev" errors.
+Future<void> initialize() async {
     try {
-      tz.setLocalLocation(tz.getLocation('Europe/Helsinki'));
-      print('Timezone force-set to Europe/Helsinki');
+      // 1. Initialize the database
+      tzdata.initializeTimeZones();
+
+      // 2. THE SHORTCUT: Hardcode Finland Time 🇫🇮
+      try {
+        tz.setLocalLocation(tz.getLocation('Europe/Helsinki'));
+        print('Timezone force-set to Europe/Helsinki');
+      } catch (e) {
+        print('Could not set Helsinki time: $e');
+        // Fallback to UTC so the app DOES NOT CRASH
+        try {
+            tz.setLocalLocation(tz.getLocation('UTC'));
+        } catch (z) {
+            print('Even UTC failed. Timezone database might be empty.');
+        }
+      }
+
+      const AndroidInitializationSettings androidInitializationSettings =
+          AndroidInitializationSettings('@mipmap/launcher_icon');
+
+      const DarwinInitializationSettings darwinInitializationSettings =
+          DarwinInitializationSettings(
+        requestSoundPermission: true,
+        requestBadgePermission: true,
+        requestAlertPermission: true,
+      );
+
+      const InitializationSettings initializationSettings =
+          InitializationSettings(
+        android: androidInitializationSettings,
+        iOS: darwinInitializationSettings,
+      );
+
+      await _flutterLocalNotificationsPlugin.initialize(
+        initializationSettings,
+        onDidReceiveNotificationResponse: _onNotificationResponse,
+      );
+
+      await _createNotificationChannel();
     } catch (e) {
-      // Fallback just in case, but Helsinki should always exist in the database.
-      tz.setLocalLocation(tz.getLocation('UTC'));
+      // CRITICAL: If anything goes wrong, log it but DON'T stop the app
+      print('Notification Service Initialization Failed: $e');
     }
+  }
 
-    const AndroidInitializationSettings androidInitializationSettings =
-        AndroidInitializationSettings('@mipmap/launcher_icon');
-
-    const DarwinInitializationSettings darwinInitializationSettings =
-        DarwinInitializationSettings(
-      requestSoundPermission: true,
-      requestBadgePermission: true,
-      requestAlertPermission: true,
-    );
-
-    const InitializationSettings initializationSettings =
-        InitializationSettings(
-      android: androidInitializationSettings,
-      iOS: darwinInitializationSettings,
-    );
-
-    await _flutterLocalNotificationsPlugin.initialize(
-      initializationSettings,
-      onDidReceiveNotificationResponse: _onNotificationResponse,
-    );
-
-    await _createNotificationChannel();
+  /// Explicitly requests notification permissions for Android 13+
+  Future<void> requestPermissions() async {
+    // Check if the permission handler plugin is properly imported at the top!
+    // import 'package:permission_handler/permission_handler.dart';
+    
+    var status = await Permission.notification.status;
+    if (status.isDenied) {
+      status = await Permission.notification.request();
+    }
+    
+    if (status.isPermanentlyDenied) {
+      // Optional: Open settings if the user previously said "Don't ask again"
+      openAppSettings();
+    }
+    print("Notification Permission Status: $status");
   }
 
   Future<void> _createNotificationChannel() async {
