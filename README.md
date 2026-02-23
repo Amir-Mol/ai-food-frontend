@@ -23,10 +23,10 @@ This repository contains the official frontend (UI) for the **NutriRecom** proje
 
 ![NutriRecom User Flow](assets/images/Figure1.png)
 
-The application user flow designed for our research pilot:
- **User Onboarding:** Users create an account and establish their profile by inputting basic demographics, dietary restrictions, and specific taste preferences.
- **Recommendation:** The app presents personalized, AI-generated meal recommendations. Depending on the research cohort, users see either the **Transparent Group** UI (which includes AI reasoning and a Healthiness Score) or the **Control Group** UI (standard recipe view).
- **Feedback Loop:** Users interact with the recommendation by liking/disliking and providing a detailed star rating. This captures essential data for the study and refines future AI suggestions.
+The application user flow designed for our research pilot:  
+ **User Onboarding:** Users create an account and establish their profile by inputting basic demographics, dietary restrictions, and specific taste preferences.  
+ **Recommendation:** The app presents personalized, AI-generated meal recommendations. Depending on the research cohort, users see either the **Transparent Group** UI (which includes AI reasoning and a Healthiness Score) or the **Control Group** UI (standard recipe view).  
+ **Feedback Loop:** Users interact with the recommendation by liking/disliking and providing a detailed star rating. This captures essential data for the study and refines future AI suggestions.  
 
 
 
