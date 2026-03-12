@@ -38,12 +38,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     
-    // 1. ASK FOR PERMISSION IMMEDIATELY
-    NotificationService().requestPermissions();
+    // 1. ASK FOR PERMISSION IMMEDIATELY (wait for it to complete)
+    _requestNotificationPermission();
     
     _fetchProfile();
     _loadCachedRecommendations();
-    _loadProgressCounter();
     
     // 2. CANCEL NOTIFICATIONS (Since user is now looking at the app)
     NotificationService().cancelAllNotifications();
@@ -60,7 +59,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (state == AppLifecycleState.paused) {
       // User minimized the app -> SCHEDULE
       print("App paused - Scheduling notification...");
-      _checkAndScheduleNotification(); 
+      _handleAppPaused(); 
     } 
     else if (state == AppLifecycleState.resumed) {
       // User came back -> CANCEL
@@ -69,29 +68,58 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
   }
 
-Future<void> _checkAndScheduleNotification() async {
-    const storage = FlutterSecureStorage(); 
-    // Note: You need to check SharedPreferences here, not SecureStorage, 
-    // depending on where you saved the 'cached_recommendations'.
-    
-    // IF cached_recommendations is NOT empty:
-    await NotificationService().scheduleUnfinishedBatchNotification();
-  }
-  
-  Future<void> _loadProgressCounter() async {
+  /// Request notification permissions asynchronously
+  Future<void> _requestNotificationPermission() async {
     try {
-      final prefs = await SharedPreferences.getInstance();
-      final total = prefs.getInt('total_feedbacks_submitted') ?? 0;
-      
-      if (mounted) {
-        setState(() {
-          _totalFeedbacksSubmitted = total;
-        });
-      }
+      await NotificationService().requestPermissions();
+      print('Notification permission requested successfully');
     } catch (e) {
-      print('Error loading progress counter: $e');
+      print('Error requesting notification permission: $e');
     }
   }
+
+  /// Handle app paused state by scheduling notifications
+  Future<void> _handleAppPaused() async {
+    try {
+      await _checkAndScheduleNotification();
+    } catch (e) {
+      print('Error in _handleAppPaused: $e');
+    }
+  }
+
+  /// Check if there are cached recommendations and schedule notification
+  Future<void> _checkAndScheduleNotification() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final cachedJson = prefs.getString('cached_recommendations');
+      
+      // Only schedule notification if there are cached recommendations
+      if (cachedJson != null && cachedJson.isNotEmpty) {
+        print('Scheduling notification for unfinished batch...');
+        await NotificationService().scheduleUnfinishedBatchNotification();
+      } else {
+        print('No cached recommendations, skipping notification scheduling');
+      }
+    } catch (e) {
+      print('Error in _checkAndScheduleNotification: $e');
+    }
+  }
+  
+  /// Deprecated: Progress counter now loaded from API via _fetchProfile()
+  // Future<void> _loadProgressCounter() async {
+  //   try {
+  //     final prefs = await SharedPreferences.getInstance();
+  //     final total = prefs.getInt('total_feedbacks_submitted') ?? 0;
+  //     
+  //     if (mounted) {
+  //       setState(() {
+  //         _totalFeedbacksSubmitted = total;
+  //       });
+  //     }
+  //   } catch (e) {
+  //     print('Error loading progress counter: $e');
+  //   }
+  // }
 
   Future<void> _loadCachedRecommendations() async {
     try {
@@ -136,11 +164,13 @@ Future<void> _checkAndScheduleNotification() async {
         final data = jsonDecode(response.body);
         final String? serverName = data['name'];
         final String serverEmail = data['email'] ?? '';
+        final int totalFeedbacks = data['total_feedbacks_submitted'] ?? 0;
 
         setState(() {
           _userName = (serverName != null && serverName.isNotEmpty)
               ? serverName
               : serverEmail.split('@').first;
+          _totalFeedbacksSubmitted = totalFeedbacks;
         });
       }
     } catch (e) {
@@ -224,6 +254,16 @@ Future<void> _checkAndScheduleNotification() async {
               ),
             ),
           );
+      } else if (response.statusCode == 401 || response.statusCode == 403) {
+        Navigator.of(context).pop();
+        const storage = FlutterSecureStorage();
+        await storage.delete(key: 'access_token');
+        if (mounted) {
+          Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (_) => const LoginScreen()));
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Session expired. Please log in again.'), backgroundColor: Colors.redAccent),
+          );
+        }
       } else if (response.statusCode == 404) {
         Navigator.of(context).pop(); // Pop dialog for this case as well.
         // The backend sends a specific message for 404, which is more of an info than an error.

@@ -1,9 +1,10 @@
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:timezone/timezone.dart' as tz;
 import 'package:timezone/data/latest.dart' as tzdata;
+import 'package:flutter_timezone/flutter_timezone.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:typed_data';
 import 'package:permission_handler/permission_handler.dart';
-// REMOVED: import 'package:flutter_timezone/flutter_timezone.dart'; << We don't need this anymore!
 
 class NotificationService {
   static final NotificationService _instance = NotificationService._internal();
@@ -22,20 +23,30 @@ class NotificationService {
 
 Future<void> initialize() async {
     try {
-      // 1. Initialize the database
-      tzdata.initializeTimeZones();
-
-      // 2. THE SHORTCUT: Hardcode Finland Time 🇫🇮
+      // Initialize timezone database
       try {
-        tz.setLocalLocation(tz.getLocation('Europe/Helsinki'));
-        print('Timezone force-set to Europe/Helsinki');
+        tzdata.initializeTimeZones();
+        print('Timezone database initialized successfully');
       } catch (e) {
-        print('Could not set Helsinki time: $e');
-        // Fallback to UTC so the app DOES NOT CRASH
+        print('Warning: Could not initialize timezone database: $e');
+      }
+      
+      // Detect and set device's actual timezone using flutter_timezone
+      try {
+        final timezoneData = await FlutterTimezone.getLocalTimezone();
+        // TimezoneInfo.toString() returns: "TimezoneInfo(Europe/Kiev, (locale: en_US, name: ...))"
+        // We need to extract just the timezone ID (Europe/Kiev)
+        final String timezoneName = timezoneData.toString().split('(')[1].split(',')[0];
+        tz.setLocalLocation(tz.getLocation(timezoneName));
+        print('✅ Device timezone detected: $timezoneName (${tz.local.name})');
+      } catch (e) {
+        print('⚠️ Could not detect device timezone: $e');
+        print('Falling back to UTC');
         try {
-            tz.setLocalLocation(tz.getLocation('UTC'));
-        } catch (z) {
-            print('Even UTC failed. Timezone database might be empty.');
+          tz.setLocalLocation(tz.getLocation('UTC'));
+          print('⚠️ Using UTC as fallback');
+        } catch (fallbackError) {
+          print('❌ Error setting UTC fallback: $fallbackError');
         }
       }
 
@@ -60,6 +71,9 @@ Future<void> initialize() async {
         onDidReceiveNotificationResponse: _onNotificationResponse,
       );
 
+      // Request notification permission for Android 13+
+      await requestPermissions();
+      
       await _createNotificationChannel();
     } catch (e) {
       // CRITICAL: If anything goes wrong, log it but DON'T stop the app
@@ -106,97 +120,144 @@ Future<void> initialize() async {
 
   Future<void> scheduleUnfinishedBatchNotification() async {
     try {
-      // Use the Oulu time we set above
+      // Use device's current time in local timezone
       final now = tz.TZDateTime.now(tz.local);
+      final scheduledTime = now.add(const Duration(hours: 3));
       
-      final scheduledTime = now.add(const Duration(hours: 3)); 
+      print('Current time (local): $now');
+      print('Scheduling notification for: $scheduledTime');
 
-      final vibrationPattern = Int64List(4)..[0] = 0..[1] = 500..[2] = 250..[3] = 500;
+      // Check if we already showed this notification recently
+      final prefs = await SharedPreferences.getInstance();
+      final lastShownTime = prefs.getInt('last_unfinished_notification_time') ?? 0;
+      final timeSinceLastNotification = now.millisecondsSinceEpoch - lastShownTime;
+      final threeHoursMs = 3 * 60 * 60 * 1000;
 
-      await _flutterLocalNotificationsPlugin.zonedSchedule(
-        1,
-        'NutriRecom',
-        'You have unrated meals! Finish them to get new recommendations.',
-        scheduledTime,
-        NotificationDetails(
-          android: AndroidNotificationDetails(
-            channelId,
-            channelName,
-            importance: Importance.high,
-            priority: Priority.high,
-            playSound: true,
-            enableVibration: true,
-            vibrationPattern: vibrationPattern,
+      // Only show if 3 hours have passed since last notification
+      if (timeSinceLastNotification >= threeHoursMs) {
+        // Show notification immediately when app is minimized
+        await _flutterLocalNotificationsPlugin.show(
+          1,
+          'NutriRecom',
+          'You have unrated meals! Finish them to get new recommendations.',
+          NotificationDetails(
+            android: AndroidNotificationDetails(
+              channelId,
+              channelName,
+              importance: Importance.high,
+              priority: Priority.high,
+              playSound: true,
+              enableVibration: true,
+              vibrationPattern: Int64List(4)..[0] = 0..[1] = 500..[2] = 250..[3] = 500,
+            ),
+            iOS: const DarwinNotificationDetails(
+              sound: 'default.caf',
+              presentAlert: true,
+              presentBadge: true,
+              presentSound: true,
+            ),
           ),
-          iOS: const DarwinNotificationDetails(
-            sound: 'default.caf',
-            presentAlert: true,
-            presentBadge: true,
-            presentSound: true,
-          ),
-        ),
-        androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
-        uiLocalNotificationDateInterpretation:
-            UILocalNotificationDateInterpretation.absoluteTime,
-        matchDateTimeComponents: DateTimeComponents.dateAndTime,
-      );
-      print('Scheduled unfinished batch for $scheduledTime');
+        );
+        
+        // Save the time we showed this notification
+        await prefs.setInt('last_unfinished_notification_time', now.millisecondsSinceEpoch);
+        print('✅ Successfully sent unfinished batch notification');
+      } else {
+        final minutesUntilNextNotification = (threeHoursMs - timeSinceLastNotification) ~/ 60000;
+        print('⏭️ Notification cooldown: ready again in $minutesUntilNextNotification minutes');
+      }
     } catch (e) {
-      print('Error scheduling unfinished batch: $e');
+      print('Error sending unfinished batch notification: $e');
     }
   }
 
   Future<void> scheduleBatchCompleteNotification() async {
     try {
+      // Use device's current time in local timezone
       final now = tz.TZDateTime.now(tz.local);
       
-      // Schedule for 6:00 PM (18:00) Oulu time
+      // Calculate when 6:00 PM is
       var scheduledTime = tz.TZDateTime(
         tz.local,
         now.year,
         now.month,
         now.day,
-        18, 
+        18,  // 6:00 PM
         0,
       );
 
-      // If it's already past 6 PM, schedule for tomorrow
+      // If it's already past 6 PM today, schedule for tomorrow
       if (now.isAfter(scheduledTime)) {
         scheduledTime = scheduledTime.add(const Duration(days: 1));
       }
-
-      final vibrationPattern = Int64List(4)..[0] = 0..[1] = 500..[2] = 250..[3] = 500;
-
-      await _flutterLocalNotificationsPlugin.zonedSchedule(
-        2,
-        'NutriRecom',
-        'Ready for more? Get your new daily meal plan.',
-        scheduledTime,
-        NotificationDetails(
-          android: AndroidNotificationDetails(
-            channelId,
-            channelName,
-            importance: Importance.high,
-            priority: Priority.high,
-            playSound: true,
-            enableVibration: true,
-            vibrationPattern: vibrationPattern,
-          ),
-          iOS: const DarwinNotificationDetails(
-            sound: 'default.caf',
-            presentAlert: true,
-            presentBadge: true,
-            presentSound: true,
-          ),
-        ),
-        androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
-        uiLocalNotificationDateInterpretation:
-            UILocalNotificationDateInterpretation.absoluteTime,
-        matchDateTimeComponents: DateTimeComponents.dateAndTime,
+      
+      print('Current time (local): $now');
+      print('6:00 PM scheduled time: $scheduledTime');
+      
+      // Check if we already showed this notification today
+      final prefs = await SharedPreferences.getInstance();
+      final lastShownTime = prefs.getInt('last_batch_complete_notification_time') ?? 0;
+      
+      // Get today's date at 6 PM for comparison
+      final todayAt6PM = tz.TZDateTime(
+        tz.local,
+        now.year,
+        now.month,
+        now.day,
+        18,
+        0,
       );
-      print('Scheduled batch complete for $scheduledTime');
+      
+      // If 6 PM hasn't occurred yet today, don't show the notification
+      if (now.isBefore(todayAt6PM)) {
+        print('⏭️ It is not yet 6:00 PM - notification scheduled to show at 6:00 PM');
+        return;
+      }
+      
+      // Get today's date at midnight for checking if we showed this today
+      final todayAtMidnight = tz.TZDateTime(
+        tz.local,
+        now.year,
+        now.month,
+        now.day,
+        0,
+        0,
+      );
+      
+      // Only show if we haven't already shown this notification today
+      if (lastShownTime < todayAtMidnight.millisecondsSinceEpoch) {
+        // Show notification immediately when app is minimized at or after 6 PM
+        await _flutterLocalNotificationsPlugin.show(
+          2,
+          'NutriRecom',
+          'Ready for more? Get your new daily meal plan.',
+          NotificationDetails(
+            android: AndroidNotificationDetails(
+              channelId,
+              channelName,
+              importance: Importance.high,
+              priority: Priority.high,
+              playSound: true,
+              enableVibration: true,
+              vibrationPattern: Int64List(4)..[0] = 0..[1] = 500..[2] = 250..[3] = 500,
+            ),
+            iOS: const DarwinNotificationDetails(
+              sound: 'default.caf',
+              presentAlert: true,
+              presentBadge: true,
+              presentSound: true,
+            ),
+          ),
+        );
+        
+        // Save the time we showed this notification
+        await prefs.setInt('last_batch_complete_notification_time', now.millisecondsSinceEpoch);
+        print('✅ Successfully sent batch complete notification');
+      } else {
+        print('⏭️ Batch complete notification already shown today - will be ready tomorrow at 6:00 PM');
+      }
     } catch (e) {
-      print('Error scheduling batch complete: $e');
+      print('Error sending batch complete notification: $e');
     }
   }
 

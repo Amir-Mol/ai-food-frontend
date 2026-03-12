@@ -4,6 +4,7 @@ import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:ai_food_app/config.dart';
+import 'package:ai_food_app/login_screen.dart';
 // TODO: Import the next onboarding screen when it's created
 // Import the next onboarding screen.
 import 'package:ai_food_app/onboarding_taste_profile_screen.dart';
@@ -165,6 +166,16 @@ class _OnboardingDietaryNeedsScreenState
           context,
           MaterialPageRoute(builder: (context) => const OnboardingTasteProfileScreen()),
         );
+      } else if (response.statusCode == 401 || response.statusCode == 403) {
+        // Token expired - force logout
+        const storage = FlutterSecureStorage();
+        await storage.delete(key: 'access_token');
+        if (mounted) {
+          Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (_) => const LoginScreen()));
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Session expired. Please log in again.'), backgroundColor: Colors.redAccent),
+          );
+        }
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Failed to save dietary needs. Error: ${response.body}'), backgroundColor: Colors.redAccent),

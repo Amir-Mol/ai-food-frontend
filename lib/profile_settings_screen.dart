@@ -3,6 +3,7 @@ import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:google_sign_in/google_sign_in.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 // Import screens for navigation
 import 'package:ai_food_app/onboarding_dietary_needs_screen.dart';
@@ -16,6 +17,7 @@ import 'package:ai_food_app/recommendation_history_screen.dart'; // Import Histo
 import 'package:ai_food_app/privacy_policy_screen.dart'; // Import PrivacyPolicyScreen 
 import 'package:ai_food_app/terms_of_service_screen.dart'; // Import TermsOfServiceScreen
 import 'package:ai_food_app/about_screen.dart'; // Import AboutScreen
+import 'package:ai_food_app/tutorial_screen.dart'; // Import TutorialScreen
 import 'package:ai_food_app/config.dart';
 
 class ProfileSettingsScreen extends StatefulWidget {
@@ -66,6 +68,16 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
               ? serverName
               : serverEmail.split('@').first;
         });
+      } else if (response.statusCode == 401 || response.statusCode == 403) {
+        // Token expired - force logout
+        const storage = FlutterSecureStorage();
+        await storage.delete(key: 'access_token');
+        if (mounted) {
+          Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (_) => const LoginScreen()));
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Session expired. Please log in again.'), backgroundColor: Colors.redAccent),
+          );
+        }
       } else {
         // Handle error, maybe show a snackbar or a retry button
         print('Failed to load profile: ${response.body}');
@@ -174,6 +186,21 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
                             MaterialPageRoute(
                               builder: (context) => const EditTasteProfileScreen(), // Navigate to the new edit screen
                               // settings: RouteSettings(arguments: {'editMode': true, 'userData': currentUserData}), // Example
+                            ),
+                          );
+                        },
+                      ),
+
+                      // iv. View Tutorial
+                      ListTile(
+                        title: Text('View Tutorial', style: theme.textTheme.titleMedium),
+                        trailing: Icon(Icons.chevron_right, color: colorScheme.onSurfaceVariant),
+                        onTap: () {
+                          print('View Tutorial tapped');
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => const TutorialScreen(),
                             ),
                           );
                         },

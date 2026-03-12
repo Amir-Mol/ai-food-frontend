@@ -3,8 +3,7 @@ import 'package:intl/intl.dart'; // For date formatting
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
-import 'package:ai_food_app/config.dart';
-
+import 'package:ai_food_app/config.dart';import 'package:ai_food_app/login_screen.dart';
 // Import other necessary screens for bottom navigation
 import 'package:ai_food_app/home_screen.dart';
 import 'package:ai_food_app/profile_settings_screen.dart';
@@ -130,6 +129,16 @@ class _RecommendationHistoryScreenState
             _hasMorePages = false;
           }
         });
+      } else if (response.statusCode == 401 || response.statusCode == 403) {
+        // Token expired - force logout
+        const storage = FlutterSecureStorage();
+        await storage.delete(key: 'access_token');
+        if (mounted) {
+          Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (_) => const LoginScreen()));
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Session expired. Please log in again.'), backgroundColor: Colors.redAccent),
+          );
+        }
       } else {
         setState(() {
           _errorMessage = 'Failed to load history: ${response.body}';

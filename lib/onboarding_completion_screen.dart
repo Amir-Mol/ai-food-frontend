@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:ai_food_app/home_screen.dart'; // Import the HomeScreen
+import 'package:ai_food_app/tutorial_screen.dart'; // Import the TutorialScreen
 
 
 class OnboardingCompletionScreen extends StatefulWidget {
@@ -13,12 +14,12 @@ class _OnboardingCompletionScreenState extends State<OnboardingCompletionScreen>
   // State variable for the mandatory consent checkbox.
   bool _dataProcessingConsentGiven = false;
 
-  // Function to navigate to the home screen.
+  // Function to navigate to the tutorial screen.
   void _completeOnboardingFunction() {
-    // Navigate to HomeScreen and remove all previous routes.
+    // Navigate to TutorialScreen and remove all previous routes.
     Navigator.pushAndRemoveUntil(
       context,
-      MaterialPageRoute(builder: (context) => const HomeScreen()),
+      MaterialPageRoute(builder: (context) => const TutorialScreen()),
       (Route<dynamic> route) => false,
     );
   }

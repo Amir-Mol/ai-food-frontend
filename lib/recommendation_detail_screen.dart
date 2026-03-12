@@ -7,8 +7,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:ai_food_app/ai_recommendation.dart';
 import 'package:ai_food_app/widgets/compact_fsa_score_bar.dart';
-import 'package:ai_food_app/config.dart';
-
+import 'package:ai_food_app/config.dart';import 'package:ai_food_app/login_screen.dart';
 class RecommendationDetailScreen extends StatefulWidget {
   final AiRecommendation recommendation;
 
@@ -148,6 +147,16 @@ class _RecommendationDetailScreenState
         await _incrementProgressCounter();
         // After showing feedback, pop back to the previous screen.
         Navigator.pop(context, true);
+      } else if (response.statusCode == 401 || response.statusCode == 403) {
+        // Token expired - force logout
+        const storage = FlutterSecureStorage();
+        await storage.delete(key: 'access_token');
+        if (mounted) {
+          Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (_) => const LoginScreen()));
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Session expired. Please log in again.'), backgroundColor: Colors.redAccent),
+          );
+        }
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Failed to submit feedback: ${response.body}'), backgroundColor: Colors.redAccent),

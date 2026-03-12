@@ -3,8 +3,7 @@ import 'package:dotted_border/dotted_border.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
-import 'package:ai_food_app/config.dart';
-
+import 'package:ai_food_app/config.dart';import 'package:ai_food_app/login_screen.dart';
 class EditTasteProfileScreen extends StatefulWidget {
   const EditTasteProfileScreen({super.key});
 
@@ -68,6 +67,16 @@ class _EditTasteProfileScreenState extends State<EditTasteProfileScreen> {
           _selectedFavoriteCuisines = Set<String>.from(data['favoriteCuisines'] ?? []);
           _otherCuisineController.text = data['otherCuisine'] ?? '';
         });
+      } else if (response.statusCode == 401 || response.statusCode == 403) {
+        // Token expired - force logout
+        const storage = FlutterSecureStorage();
+        await storage.delete(key: 'access_token');
+        if (mounted) {
+          Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (_) => const LoginScreen()));
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Session expired. Please log in again.'), backgroundColor: Colors.redAccent),
+          );
+        }
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Failed to load taste profile: ${response.body}'), backgroundColor: Colors.redAccent),
@@ -180,6 +189,16 @@ class _EditTasteProfileScreenState extends State<EditTasteProfileScreen> {
           const SnackBar(content: Text('Taste profile updated successfully!'), backgroundColor: Colors.green),
         );
         Navigator.pop(context);
+      } else if (response.statusCode == 401 || response.statusCode == 403) {
+        // Token expired - force logout
+        const storage = FlutterSecureStorage();
+        await storage.delete(key: 'access_token');
+        if (mounted) {
+          Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (_) => const LoginScreen()));
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Session expired. Please log in again.'), backgroundColor: Colors.redAccent),
+          );
+        }
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Failed to save taste profile: ${response.body}'), backgroundColor: Colors.redAccent),

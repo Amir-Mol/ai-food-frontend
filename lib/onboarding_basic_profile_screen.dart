@@ -6,7 +6,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 // Import the next onboarding screen.
 import 'package:ai_food_app/onboarding_dietary_needs_screen.dart';
-
+import 'package:ai_food_app/login_screen.dart';
 import 'package:ai_food_app/config.dart';
 
 // OnboardingBasicProfileScreen collects basic user profile information.
@@ -166,6 +166,16 @@ class _OnboardingBasicProfileScreenState
           context,
           MaterialPageRoute(builder: (context) => const OnboardingDietaryNeedsScreen()),
         );
+      } else if (response.statusCode == 401 || response.statusCode == 403) {
+        // Token expired - force logout
+        const storage = FlutterSecureStorage();
+        await storage.delete(key: 'access_token');
+        if (mounted) {
+          Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (_) => const LoginScreen()));
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Session expired. Please log in again.'), backgroundColor: Colors.redAccent),
+          );
+        }
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Failed to save profile. Error: ${response.body}'), backgroundColor: Colors.redAccent),
