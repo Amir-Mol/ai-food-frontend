@@ -2,10 +2,10 @@ import 'package:flutter/material.dart';
 
 /// A StatelessWidget that displays a compact healthiness score bar.
 ///
-/// It accepts a health score from 1 (healthiest) to 10 (least healthy)
+/// It accepts a health score from 1 (least healthy) to 10 (healthiest)
 /// and maps it to a visual gradient bar.
 class CompactFsaScoreBar extends StatelessWidget {
-  /// The health score, where 1 is healthiest and 10 is least healthy.
+  /// The health score, where 1 is least healthy and 10 is healthiest.
   final double healthScore;
 
   const CompactFsaScoreBar({super.key, required this.healthScore});
@@ -16,10 +16,9 @@ class CompactFsaScoreBar extends StatelessWidget {
     final ThemeData theme = Theme.of(context);
     final ColorScheme colorScheme = theme.colorScheme;
 
-    // --- NEW LOGIC: Map the 1-10 score to a 0.0-1.0 percentage ---
-    // First, clamp the score to be safely within the 1-10 range.
+    // --- LOGIC: Map the 1-10 score to a 0.0-1.0 percentage ---
+    // Score 1 (least healthy) = 0.0 (left/red), Score 10 (healthiest) = 1.0 (right/green).
     final clampedScore = healthScore.clamp(1.0, 10.0);
-    // Convert to a percentage. Score 1 (healthiest) = 0.0 (left), Score 10 (least healthy) = 1.0 (right).
     final double percentage = (clampedScore - 1) / 9.0;
 
     const double barHeight = 12.0;
@@ -53,10 +52,10 @@ class CompactFsaScoreBar extends StatelessWidget {
                     borderRadius: BorderRadius.circular(6),
                     gradient: const LinearGradient(
                       colors: [
-                        Colors.green,
-                        Colors.yellow,
-                        Colors.orange,
                         Colors.red,
+                        Colors.orange,
+                        Colors.yellow,
+                        Colors.green,
                       ],
                     ),
                   ),
@@ -82,8 +81,8 @@ class CompactFsaScoreBar extends StatelessWidget {
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Text("Healthier", style: theme.textTheme.labelSmall?.copyWith(color: colorScheme.onSurfaceVariant)),
             Text("Less Healthy", style: theme.textTheme.labelSmall?.copyWith(color: colorScheme.onSurfaceVariant)),
+            Text("Healthier", style: theme.textTheme.labelSmall?.copyWith(color: colorScheme.onSurfaceVariant)),
           ],
         ),
       ],

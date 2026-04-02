@@ -4,10 +4,10 @@ import 'package:http/http.dart' as http;
 import 'package:url_launcher/url_launcher.dart';
 import 'dart:convert';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:ai_food_app/ai_recommendation.dart';
 import 'package:ai_food_app/widgets/compact_fsa_score_bar.dart';
-import 'package:ai_food_app/config.dart';
-
+import 'package:ai_food_app/config.dart';import 'package:ai_food_app/login_screen.dart';
 class RecommendationDetailScreen extends StatefulWidget {
   final AiRecommendation recommendation;
 
@@ -40,6 +40,17 @@ class _RecommendationDetailScreenState
   @override
   void dispose() {
     super.dispose();
+  }
+
+  /// Increments the global progress counter for total feedbacks submitted.
+  Future<void> _incrementProgressCounter() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final currentTotal = prefs.getInt('total_feedbacks_submitted') ?? 0;
+      await prefs.setInt('total_feedbacks_submitted', currentTotal + 1);
+    } catch (e) {
+      print('Error incrementing progress counter: $e');
+    }
   }
 
   /// Launches the provided URL string.
@@ -132,8 +143,20 @@ class _RecommendationDetailScreenState
             backgroundColor: colorScheme.secondaryContainer,
           ),
         );
+        // Increment the global progress counter
+        await _incrementProgressCounter();
         // After showing feedback, pop back to the previous screen.
         Navigator.pop(context, true);
+      } else if (response.statusCode == 401 || response.statusCode == 403) {
+        // Token expired - force logout
+        const storage = FlutterSecureStorage();
+        await storage.delete(key: 'access_token');
+        if (mounted) {
+          Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (_) => const LoginScreen()));
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Session expired. Please log in again.'), backgroundColor: Colors.redAccent),
+          );
+        }
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Failed to submit feedback: ${response.body}'), backgroundColor: Colors.redAccent),
@@ -279,7 +302,7 @@ class _RecommendationDetailScreenState
               // v. Nutritional Information
               ListTile(
                 leading: Icon(Icons.assessment_outlined, color: colorScheme.primary),
-                title: Text("Nutritional Information", style: theme.textTheme.titleMedium),
+                title: Text("Nutritional Information (per 100g)", style: theme.textTheme.titleMedium),
                 subtitle: Text(
                   'Calories: ${widget.recommendation.nutritionalInfo.calories?.toStringAsFixed(0) ?? 'N/A'}kcal • '
                   'Protein: ${widget.recommendation.nutritionalInfo.protein?.toStringAsFixed(1) ?? 'N/A'}g • '

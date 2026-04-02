@@ -3,6 +3,7 @@ import 'package:http/http.dart' as http;
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:ai_food_app/ai_recommendation.dart';
 import 'package:ai_food_app/recommendation_results_screen.dart';
@@ -10,6 +11,7 @@ import 'package:ai_food_app/profile_settings_screen.dart';
 import 'package:ai_food_app/recommendation_history_screen.dart'; // Import HistoryScreen
 import 'package:ai_food_app/login_screen.dart'; // For potential re-login on auth error
 import 'package:ai_food_app/config.dart';
+import 'package:ai_food_app/services/notification_service.dart';
 
 /// HomeScreen is the main dashboard screen displayed after a user logs in.
 ///
@@ -23,16 +25,122 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   bool _isLoadingRecommendations = false;
   bool _isLoadingProfile = true;
   String _userName = 'User';
   bool _isExperimentComplete = false;
+  List<AiRecommendation>? _cachedRecommendations;
+  int _totalFeedbacksSubmitted = 0;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    
+    // 1. ASK FOR PERMISSION IMMEDIATELY (wait for it to complete)
+    _requestNotificationPermission();
+    
     _fetchProfile();
+    _loadCachedRecommendations();
+    
+    // 2. CANCEL NOTIFICATIONS (Since user is now looking at the app)
+    NotificationService().cancelAllNotifications();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused) {
+      // User minimized the app -> SCHEDULE
+      print("App paused - Scheduling notification...");
+      _handleAppPaused(); 
+    } 
+    else if (state == AppLifecycleState.resumed) {
+      // User came back -> CANCEL
+      print("App resumed - Cancelling notifications...");
+      NotificationService().cancelAllNotifications();
+    }
+  }
+
+  /// Request notification permissions asynchronously
+  Future<void> _requestNotificationPermission() async {
+    try {
+      await NotificationService().requestPermissions();
+      print('Notification permission requested successfully');
+    } catch (e) {
+      print('Error requesting notification permission: $e');
+    }
+  }
+
+  /// Handle app paused state by scheduling notifications
+  Future<void> _handleAppPaused() async {
+    try {
+      await _checkAndScheduleNotification();
+    } catch (e) {
+      print('Error in _handleAppPaused: $e');
+    }
+  }
+
+  /// Check if there are cached recommendations and schedule notification
+  Future<void> _checkAndScheduleNotification() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final cachedJson = prefs.getString('cached_recommendations');
+      
+      // Only schedule notification if there are cached recommendations
+      if (cachedJson != null && cachedJson.isNotEmpty) {
+        print('Scheduling notification for unfinished batch...');
+        await NotificationService().scheduleUnfinishedBatchNotification();
+      } else {
+        print('No cached recommendations, skipping notification scheduling');
+      }
+    } catch (e) {
+      print('Error in _checkAndScheduleNotification: $e');
+    }
+  }
+  
+  /// Deprecated: Progress counter now loaded from API via _fetchProfile()
+  // Future<void> _loadProgressCounter() async {
+  //   try {
+  //     final prefs = await SharedPreferences.getInstance();
+  //     final total = prefs.getInt('total_feedbacks_submitted') ?? 0;
+  //     
+  //     if (mounted) {
+  //       setState(() {
+  //         _totalFeedbacksSubmitted = total;
+  //       });
+  //     }
+  //   } catch (e) {
+  //     print('Error loading progress counter: $e');
+  //   }
+  // }
+
+  Future<void> _loadCachedRecommendations() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final cachedJson = prefs.getString('cached_recommendations');
+      
+      if (cachedJson != null && cachedJson.isNotEmpty) {
+        final List<dynamic> jsonList = jsonDecode(cachedJson);
+        final recommendations = jsonList
+            .map((json) => AiRecommendation.fromJson(json))
+            .toList();
+        
+        if (mounted) {
+          setState(() {
+            _cachedRecommendations = recommendations;
+          });
+        }
+      }
+    } catch (e) {
+      print('Error loading cached recommendations: $e');
+    }
   }
 
   Future<void> _fetchProfile() async {
@@ -56,11 +164,13 @@ class _HomeScreenState extends State<HomeScreen> {
         final data = jsonDecode(response.body);
         final String? serverName = data['name'];
         final String serverEmail = data['email'] ?? '';
+        final int totalFeedbacks = data['total_feedbacks_submitted'] ?? 0;
 
         setState(() {
           _userName = (serverName != null && serverName.isNotEmpty)
               ? serverName
               : serverEmail.split('@').first;
+          _totalFeedbacksSubmitted = totalFeedbacks;
         });
       }
     } catch (e) {
@@ -132,6 +242,8 @@ class _HomeScreenState extends State<HomeScreen> {
             .map((json) => AiRecommendation.fromJson(json))
             .toList();
 
+        // Cache the recommendations
+        await _cacheRecommendations(aiRecommendations);
 
         Navigator.push(
             context,
@@ -142,6 +254,16 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ),
           );
+      } else if (response.statusCode == 401 || response.statusCode == 403) {
+        Navigator.of(context).pop();
+        const storage = FlutterSecureStorage();
+        await storage.delete(key: 'access_token');
+        if (mounted) {
+          Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (_) => const LoginScreen()));
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Session expired. Please log in again.'), backgroundColor: Colors.redAccent),
+          );
+        }
       } else if (response.statusCode == 404) {
         Navigator.of(context).pop(); // Pop dialog for this case as well.
         // The backend sends a specific message for 404, which is more of an info than an error.
@@ -185,6 +307,81 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  Future<void> _cacheRecommendations(List<AiRecommendation> recommendations) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final jsonList = recommendations.map((rec) => rec.toJson()).toList();
+      await prefs.setString('cached_recommendations', jsonEncode(jsonList));
+    } catch (e) {
+      print('Error caching recommendations: $e');
+    }
+  }
+
+  Future<void> _continueCachedSession() async {
+    if (_cachedRecommendations == null || _cachedRecommendations!.isEmpty) {
+      return;
+    }
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => RecommendationResultsScreen(
+          recommendations: _cachedRecommendations!,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildProgressCounterWidget(BuildContext context, ColorScheme colorScheme, ThemeData theme) {
+    final progressPercentage = (_totalFeedbacksSubmitted / 100 * 100).toInt();
+    
+    return Container(
+      padding: const EdgeInsets.all(20.0),
+      decoration: BoxDecoration(
+        color: colorScheme.primaryContainer,
+        borderRadius: BorderRadius.circular(16.0),
+        border: Border.all(color: colorScheme.primary, width: 2.0),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Text(
+            'Total Rated',
+            style: theme.textTheme.labelLarge?.copyWith(
+              color: colorScheme.onPrimaryContainer,
+            ),
+          ),
+          const SizedBox(height: 8.0),
+          Text(
+            '$_totalFeedbacksSubmitted / 100',
+            style: theme.textTheme.headlineMedium?.copyWith(
+              color: colorScheme.onPrimaryContainer,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: 12.0),
+          // Progress bar
+          ClipRRect(
+            borderRadius: BorderRadius.circular(8.0),
+            child: LinearProgressIndicator(
+              value: _totalFeedbacksSubmitted / 100,
+              minHeight: 8.0,
+              backgroundColor: colorScheme.primary.withOpacity(0.3),
+              valueColor: AlwaysStoppedAnimation<Color>(colorScheme.primary),
+            ),
+          ),
+          const SizedBox(height: 8.0),
+          Text(
+            '$progressPercentage% Complete',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: colorScheme.onPrimaryContainer,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final ThemeData theme = Theme.of(context);
@@ -215,16 +412,27 @@ class _HomeScreenState extends State<HomeScreen> {
                       style: theme.textTheme.headlineSmall?.copyWith(color: colorScheme.onSurface),
                       textAlign: TextAlign.center,
                     ),
+                    const SizedBox(height: 40.0),
+                    // Progress Counter Widget
+                    _buildProgressCounterWidget(context, colorScheme, theme),
                     const SizedBox(height: 50.0),
                     FilledButton(
-                      onPressed: _isLoadingRecommendations || _isExperimentComplete ? null : _getTodaysRecommendations,
+                      onPressed: _isLoadingRecommendations || _isExperimentComplete
+                          ? null
+                          : (_cachedRecommendations != null && _cachedRecommendations!.isNotEmpty)
+                              ? _continueCachedSession
+                              : _getTodaysRecommendations,
                       style: FilledButton.styleFrom(
                         backgroundColor: colorScheme.primary,
                         foregroundColor: colorScheme.onPrimary,
                         shape: const StadiumBorder(), // Ensures a pill shape
                         padding: const EdgeInsets.symmetric(vertical: 25.0),
                       ),
-                      child: const Text('Find a Meal'),
+                      child: Text(
+                        (_cachedRecommendations != null && _cachedRecommendations!.isNotEmpty)
+                            ? 'Continue Rating (${_cachedRecommendations!.length} left)'
+                            : 'Find a Meal',
+                      ),
                     ),
                     Visibility(
                       visible: _isExperimentComplete,

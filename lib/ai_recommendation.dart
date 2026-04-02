@@ -33,6 +33,17 @@ class NutritionalInfo {
       sodium: _toDouble(json['sodium']),
     );
   }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'calories': calories,
+      'protein': protein,
+      'carbs': carbs,
+      'fat': fat,
+      'sugars': sugars,
+      'sodium': sodium,
+    };
+  }
 }
 
 class AiRecommendation {
@@ -76,5 +87,18 @@ class AiRecommendation {
           ? NutritionalInfo.fromJson(json['nutritionalInfo'])
           : NutritionalInfo(), // Provide empty nutritional info if null
     );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'recipeId': recipeId,
+      'name': name,
+      'explanation': explanation,
+      'imageUrl': imageUrl,
+      'healthScore': healthScore,
+      'ingredients': ingredients,
+      'recipeUrl': recipeUrl,
+      'nutritionalInfo': nutritionalInfo.toJson(),
+    };
   }
 }

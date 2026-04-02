@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:ai_food_app/home_screen.dart';
 import 'package:ai_food_app/welcome_screen.dart';
+import 'package:ai_food_app/tutorial_screen.dart';
 
 /// A screen that checks the user's authentication status on app startup.
 ///
@@ -34,10 +36,23 @@ class _AuthCheckScreenState extends State<AuthCheckScreen> {
 
     if (token != null) {
       // If a token exists, the user is considered logged in.
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (context) => const HomeScreen()),
-      );
+      // Check if the user has already seen the tutorial.
+      final prefs = await SharedPreferences.getInstance();
+      final hasSeen = prefs.getBool('has_seen_tutorial') ?? false;
+
+      if (hasSeen) {
+        // User has seen the tutorial, go to HomeScreen
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (context) => const HomeScreen()),
+        );
+      } else {
+        // User is new or hasn't seen the tutorial, go to TutorialScreen
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (context) => const TutorialScreen()),
+        );
+      }
     } else {
       // If no token, the user needs to log in or register.
       Navigator.pushReplacement(
