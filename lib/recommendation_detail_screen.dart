@@ -302,7 +302,7 @@ class _RecommendationDetailScreenState
               // v. Nutritional Information
               ListTile(
                 leading: Icon(Icons.assessment_outlined, color: colorScheme.primary),
-                title: Text("Nutritional Information", style: theme.textTheme.titleMedium),
+                title: Text("Nutritional Information (per 100g)", style: theme.textTheme.titleMedium),
                 subtitle: Text(
                   'Calories: ${widget.recommendation.nutritionalInfo.calories?.toStringAsFixed(0) ?? 'N/A'}kcal • '
                   'Protein: ${widget.recommendation.nutritionalInfo.protein?.toStringAsFixed(1) ?? 'N/A'}g • '
