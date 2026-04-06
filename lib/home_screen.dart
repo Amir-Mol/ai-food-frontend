@@ -545,27 +545,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                         ),
                       ),
                     // Main button (Find a Meal / Continue / Countdown / etc.)
-                    if (_currentStatus?.nextAllowedGenerationAt != null &&
-                        !_currentStatus!.canGenerateNow)
-                      // Show countdown timer if generation is blocked
-                      CountdownButton(
-                        nextAvailableAt:
-                            _currentStatus!.nextAllowedGenerationAt!,
-                        onReady: () {
-                          // When countdown expires, update status
-                          setState(() {
-                            _currentStatus = RecommendationStatus(
-                              status: 'ready',
-                              recommendationsReadyAt:
-                                  _currentStatus?.recommendationsReadyAt,
-                              nextAllowedGenerationAt: null,
-                            );
-                          });
-                        },
-                      )
-                    else if (_cachedRecommendations != null &&
+                    // PRIORITY: Show "Continue Rating" if there are unsubmitted feedbacks, regardless of timer
+                    if (_cachedRecommendations != null &&
                         _cachedRecommendations!.isNotEmpty)
-                      // Show "Continue Rating" button
+                      // Show "Continue Rating" button (highest priority - unsubmitted feedback)
                       FilledButton(
                         onPressed: _isLoadingRecommendations ||
                                 _isExperimentComplete ||
@@ -582,6 +565,24 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                         child: Text(
                           'Continue Rating (${_cachedRecommendations!.length} left)',
                         ),
+                      )
+                    else if (_currentStatus?.nextAllowedGenerationAt != null &&
+                        !_currentStatus!.canGenerateNow)
+                      // Show countdown timer if generation is blocked (and no pending feedback)
+                      CountdownButton(
+                        nextAvailableAt:
+                            _currentStatus!.nextAllowedGenerationAt!,
+                        onReady: () {
+                          // When countdown expires, update status
+                          setState(() {
+                            _currentStatus = RecommendationStatus(
+                              status: 'ready',
+                              recommendationsReadyAt:
+                                  _currentStatus?.recommendationsReadyAt,
+                              nextAllowedGenerationAt: null,
+                            );
+                          });
+                        },
                       )
                     else
                       // Show "Find a Meal" button
