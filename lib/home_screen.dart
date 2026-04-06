@@ -320,6 +320,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           
           if (!mounted) return;
           
+          // Stop polling before navigating away (prevents auto-refetch while on recommendations screen)
+          _stopStatusPolling();
+          
           // Navigate to recommendations screen
           print('[RECOMMENDATIONS] 🚀 Navigating to RecommendationResultsScreen...');
           Navigator.push(
@@ -329,7 +332,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 recommendations: recommendations,
               ),
             ),
-          );
+          ).then((_) {
+            // Restart polling when user returns from recommendations screen
+            print('[STATUS_POLLING] User returned from recommendations screen, restarting polling...');
+            _startStatusPolling();
+          });
           
         } catch (parseError) {
           print('[RECOMMENDATIONS] ❌ Error parsing response: $parseError');
