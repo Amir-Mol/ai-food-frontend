@@ -38,6 +38,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   
   // UI state for displaying status information
   RecommendationStatus? _currentStatus;
+  DateTime? _nextAllowedGenerationAt; // Load immediately from SharedPreferences
   
   // Phase B: Status polling
   Timer? _statusPollingTimer;
@@ -53,6 +54,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     
     _fetchProfile();
     _loadCachedRecommendations();
+    _loadNextAllowedGenerationTime(); // Load timer immediately for early UI update
     
     // Phase B: Start status polling to track recommendation generation
     _startStatusPolling();
@@ -215,6 +217,25 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
   }
 
+  /// Load nextAllowedGenerationAt from SharedPreferences immediately
+  /// This allows us to show the countdown timer while generation is happening in the background
+  Future<void> _loadNextAllowedGenerationTime() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final timeString = prefs.getString('nextAllowedGenerationAt');
+      if (timeString != null) {
+        final parsedTime = DateTime.parse(timeString);
+        if (mounted) {
+          setState(() {
+            _nextAllowedGenerationAt = parsedTime;
+          });
+        }
+      }
+    } catch (e) {
+      print('Error loading nextAllowedGenerationAt: $e');
+    }
+  }
+
   Future<void> _fetchProfile() async {
     const storage = FlutterSecureStorage();
     try {
@@ -311,6 +332,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             print('[RECOMMENDATIONS] Next generation allowed at: $nextAllowedAt');
             final prefs = await SharedPreferences.getInstance();
             await prefs.setString('nextAllowedGenerationAt', nextAllowedAt);
+            // Also update local variable so countdown shows immediately
+            if (mounted) {
+              setState(() {
+                _nextAllowedGenerationAt = DateTime.parse(nextAllowedAt);
+              });
+            }
             print('[RECOMMENDATIONS] ✅ Saved timer to SharedPreferences');
           }
           
@@ -566,15 +593,35 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                           'Continue Rating (${_cachedRecommendations!.length} left)',
                         ),
                       )
+                    else if (_nextAllowedGenerationAt != null &&
+                        _nextAllowedGenerationAt!.isAfter(DateTime.now()))
+                      // Show countdown timer immediately using loaded value from SharedPreferences
+                      // This shows countdown while generation is happening in the background
+                      CountdownButton(
+                        nextAvailableAt: _nextAllowedGenerationAt!,
+                        onReady: () {
+                          // When countdown expires, clear the local timer and reset status
+                          setState(() {
+                            _nextAllowedGenerationAt = null;
+                            _currentStatus = RecommendationStatus(
+                              status: 'ready',
+                              recommendationsReadyAt:
+                                  _currentStatus?.recommendationsReadyAt,
+                              nextAllowedGenerationAt: null,
+                            );
+                          });
+                        },
+                      )
                     else if (_currentStatus?.nextAllowedGenerationAt != null &&
-                        !_currentStatus!.canGenerateNow)
-                      // Show countdown timer if generation is blocked (and no pending feedback)
+                        _currentStatus!.nextAllowedGenerationAt!.isAfter(DateTime.now()))
+                      // Fallback: Show countdown timer from status if loaded value expired
                       CountdownButton(
                         nextAvailableAt:
                             _currentStatus!.nextAllowedGenerationAt!,
                         onReady: () {
                           // When countdown expires, update status
                           setState(() {
+                            _nextAllowedGenerationAt = null;
                             _currentStatus = RecommendationStatus(
                               status: 'ready',
                               recommendationsReadyAt:
