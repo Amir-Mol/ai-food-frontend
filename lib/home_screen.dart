@@ -165,8 +165,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       });
       
       // Phase B Step 7: Auto-navigate to recommendations when ready
-      // If status is "ready" and user isn't already loading, navigate to recommendations
-      if (status.isReady && !_isLoadingRecommendations && _cachedRecommendations == null) {
+      // Only fetch if user CAN generate (not rate-limited)
+      if (status.isReady && !_isLoadingRecommendations && _cachedRecommendations == null && status.canGenerateNow) {
         print('[STATUS_POLLING] Recommendations ready! Fetching...');
         await _getTodaysRecommendations();
       }
@@ -360,25 +360,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           );
         }
       } else if (response.statusCode == 429) {
-        print('[RECOMMENDATIONS] ❌ Rate limited (429)');
-        if (mounted) {
-          try {
-            final responseBody = jsonDecode(response.body);
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text(responseBody['detail'] ?? 'Please wait before requesting new recommendations.'),
-                backgroundColor: Colors.orangeAccent,
-              ),
-            );
-          } catch (e) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('Please wait before requesting new recommendations.'),
-                backgroundColor: Colors.orangeAccent,
-              ),
-            );
-          }
-        }
+        print('[RECOMMENDATIONS] ❌ Rate limited (429) - Countdown timer shown on button');
+        // Don't show popup - the countdown timer on the button already shows the wait time
+        // This prevents repeated popups every 2 seconds from polling
       } else {
         print('[RECOMMENDATIONS] ❌ Failed with status ${response.statusCode}');
         if (mounted) {
