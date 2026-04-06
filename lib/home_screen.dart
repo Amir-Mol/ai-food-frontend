@@ -295,18 +295,18 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         return;
       }
 
-      // Send recommendation request (backend takes ~17-25 seconds to generate)
-      print('[RECOMMENDATIONS] Sending POST to /api/generate-recommendations...');
-      final uri = Uri.parse('${AppConfig.apiBaseUrl}/api/generate-recommendations');
-      final response = await http.post(
+      // Phase C: Fetch pre-generated recommendations (instant, no wait)
+      print('[RECOMMENDATIONS] Sending GET to /api/recommendations (fetching pre-generated)...');
+      final uri = Uri.parse('${AppConfig.apiBaseUrl}/api/recommendations');
+      final response = await http.get(
         uri,
         headers: {'Authorization': 'Bearer $token'},
-      ).timeout(const Duration(seconds: 40)); // Allow full backend processing time
+      ).timeout(const Duration(seconds: 10)); // Quick timeout for fetch (not generation)
 
       if (!mounted) return;
 
       if (response.statusCode == 200) {
-        print('[RECOMMENDATIONS] ✅ Recommendations generated successfully!');
+        print('[RECOMMENDATIONS] ✅ Pre-generated recommendations fetched successfully!');
         
         try {
           final jsonResponse = jsonDecode(response.body);
@@ -326,20 +326,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           
           print('[RECOMMENDATIONS] ✅ Converted ${recommendations.length} recommendations to objects');
           
-          // Extract and save timer
-          final nextAllowedAt = jsonResponse['nextAllowedGenerationAt'];
-          if (nextAllowedAt != null) {
-            print('[RECOMMENDATIONS] Next generation allowed at: $nextAllowedAt');
-            final prefs = await SharedPreferences.getInstance();
-            await prefs.setString('nextAllowedGenerationAt', nextAllowedAt);
-            // Also update local variable so countdown shows immediately
-            if (mounted) {
-              setState(() {
-                _nextAllowedGenerationAt = DateTime.parse(nextAllowedAt);
-              });
-            }
-            print('[RECOMMENDATIONS] ✅ Saved timer to SharedPreferences');
-          }
+          // Note: timer (nextAllowedGenerationAt) already loaded from SharedPreferences in initState
+          // No need to extract from response
           
           // Cache the recommendations
           await _cacheRecommendations(recommendations);
@@ -386,10 +374,16 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             const SnackBar(content: Text('Session expired. Please log in again.'), backgroundColor: Colors.redAccent),
           );
         }
-      } else if (response.statusCode == 429) {
-        print('[RECOMMENDATIONS] ❌ Rate limited (429) - Countdown timer shown on button');
-        // Don't show popup - the countdown timer on the button already shows the wait time
-        // This prevents repeated popups every 2 seconds from polling
+      } else if (response.statusCode == 404) {
+        print('[RECOMMENDATIONS] ❌ No recommendations available (404)');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('No recommendations available. Please try again later.'),
+              backgroundColor: Colors.orangeAccent,
+            ),
+          );
+        }
       } else {
         print('[RECOMMENDATIONS] ❌ Failed with status ${response.statusCode}');
         if (mounted) {
