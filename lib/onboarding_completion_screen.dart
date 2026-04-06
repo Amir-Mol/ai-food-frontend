@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
+import 'dart:async';
 import 'package:ai_food_app/home_screen.dart'; // Import the HomeScreen
 import 'package:ai_food_app/tutorial_screen.dart'; // Import the TutorialScreen
+import 'package:ai_food_app/recommendation_results_screen.dart';
+import 'package:ai_food_app/services/recommendation_service.dart';
 
 
 class OnboardingCompletionScreen extends StatefulWidget {
@@ -11,8 +14,11 @@ class OnboardingCompletionScreen extends StatefulWidget {
 }
 
 class _OnboardingCompletionScreenState extends State<OnboardingCompletionScreen> {
-  // State variable for the mandatory consent checkbox.
+  // State variables
   bool _dataProcessingConsentGiven = false;
+  bool _isGeneratingRecommendations = false;
+  final _recommendationService = RecommendationService();
+  Timer? _statusPollingTimer;
 
   // Function to navigate to the tutorial screen.
   void _completeOnboardingFunction() {
@@ -22,6 +28,110 @@ class _OnboardingCompletionScreenState extends State<OnboardingCompletionScreen>
       MaterialPageRoute(builder: (context) => const TutorialScreen()),
       (Route<dynamic> route) => false,
     );
+  }
+
+  /// Start polling for recommendation status
+  void _startStatusPolling() {
+    _statusPollingTimer = Timer.periodic(const Duration(seconds: 3), (_) async {
+      if (!mounted) return;
+
+      try {
+        final status = await _recommendationService.checkStatus();
+
+        if (!mounted) return;
+
+        if (status.isReady) {
+          // Recommendations are ready - get them and navigate
+          _cancelStatusPolling();
+          final recommendations =
+              await _recommendationService.getRecommendations();
+
+          if (!mounted) return;
+
+          Navigator.pushAndRemoveUntil(
+            context,
+            MaterialPageRoute(
+              builder: (context) => RecommendationResultsScreen(
+                recommendations: recommendations,
+              ),
+            ),
+            (Route<dynamic> route) => false,
+          );
+        }
+      } catch (e) {
+        print('Error checking status: $e');
+        // Continue polling even on error
+      }
+    });
+  }
+
+  /// Cancel status polling
+  void _cancelStatusPolling() {
+    _statusPollingTimer?.cancel();
+    _statusPollingTimer = null;
+  }
+
+  /// Handle "Explore Recommendations" button tap
+  Future<void> _handleExploreRecommendations() async {
+    setState(() {
+      _isGeneratingRecommendations = true;
+    });
+
+    try {
+      // Trigger async recommendation generation
+      await _recommendationService.completeOnboarding();
+
+      if (!mounted) return;
+
+      // Show loading dialog and start polling
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (BuildContext context) {
+          return AlertDialog(
+            title: const Text('Crafting Your Meals 🤖'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const SizedBox(height: 16),
+                const CircularProgressIndicator(),
+                const SizedBox(height: 16),
+                Text(
+                  'AI is analyzing your preferences...',
+                  textAlign: TextAlign.center,
+                  style: Theme.of(context).textTheme.bodyMedium,
+                ),
+              ],
+            ),
+          );
+        },
+      );
+
+      // Start polling for status
+      _startStatusPolling();
+    } catch (e) {
+      setState(() {
+        _isGeneratingRecommendations = false;
+      });
+
+      if (!mounted) return;
+
+      // Show error and dismiss loading dialog if shown
+      Navigator.pop(context);
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  @override
+  void dispose() {
+    _cancelStatusPolling();
+    super.dispose();
   }
 
   @override
@@ -87,8 +197,10 @@ class _OnboardingCompletionScreenState extends State<OnboardingCompletionScreen>
               ),
               const SizedBox(height: 16.0),
               FilledButton(
-                // Button is disabled until consent is given.
-                onPressed: _dataProcessingConsentGiven ? _completeOnboardingFunction : null,
+                // Button is disabled until consent is given or while generating
+                onPressed: (_dataProcessingConsentGiven && !_isGeneratingRecommendations)
+                    ? _handleExploreRecommendations
+                    : null,
                 style: FilledButton.styleFrom(
                   backgroundColor: colorScheme.primary,
                   foregroundColor: colorScheme.onPrimary,
@@ -97,7 +209,17 @@ class _OnboardingCompletionScreenState extends State<OnboardingCompletionScreen>
                     borderRadius: BorderRadius.circular(20), // Pill shape
                   ),
                 ),
-                child: const Text('Explore Recommendations'),
+                child: _isGeneratingRecommendations
+                    ? const SizedBox(
+                        height: 20,
+                        width: 20,
+                        child: CircularProgressIndicator(
+                          valueColor:
+                              AlwaysStoppedAnimation<Color>(Colors.white),
+                          strokeWidth: 2,
+                        ),
+                      )
+                    : const Text('Explore Recommendations'),
               ),
               const SizedBox(height: 12.0),
               Text(

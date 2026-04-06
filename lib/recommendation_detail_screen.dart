@@ -143,6 +143,24 @@ class _RecommendationDetailScreenState
             backgroundColor: colorScheme.secondaryContainer,
           ),
         );
+        
+        // Extract nextAllowedGenerationAt from response
+        try {
+          final responseBody = jsonDecode(response.body);
+          if (responseBody['nextAllowedGenerationAt'] != null) {
+            final nextAllowedGenerationAt =
+                DateTime.parse(responseBody['nextAllowedGenerationAt']);
+            // Save to SharedPreferences so recommendation_results_screen can access it
+            final prefs = await SharedPreferences.getInstance();
+            await prefs.setString(
+              'nextAllowedGenerationAt',
+              nextAllowedGenerationAt.toIso8601String(),
+            );
+          }
+        } catch (e) {
+          print('Error extracting nextAllowedGenerationAt: $e');
+        }
+        
         // Increment the global progress counter
         await _incrementProgressCounter();
         // After showing feedback, pop back to the previous screen.

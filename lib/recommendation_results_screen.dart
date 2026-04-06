@@ -10,6 +10,7 @@ import 'package:ai_food_app/recommendation_history_screen.dart';
 import 'package:ai_food_app/ai_recommendation.dart';
 import 'package:ai_food_app/widgets/compact_fsa_score_bar.dart';
 import 'package:ai_food_app/services/notification_service.dart';
+import 'package:ai_food_app/widgets/countdown_button.dart';
 
 /// Displays a list of food recommendations.
 class RecommendationResultsScreen extends StatefulWidget {
@@ -28,12 +29,29 @@ class RecommendationResultsScreen extends StatefulWidget {
 class _RecommendationResultsScreenState
     extends State<RecommendationResultsScreen> {
   late List<AiRecommendation> _localRecommendations;
+  DateTime? _nextAllowedGenerationAt;
 
   @override
   void initState() {
     super.initState();
     // Create a mutable copy of the recommendations to allow for removal.
     _localRecommendations = List.from(widget.recommendations);
+    _loadNextAllowedGenerationTime();
+  }
+
+  /// Load nextAllowedGenerationAt from SharedPreferences
+  Future<void> _loadNextAllowedGenerationTime() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final timeString = prefs.getString('nextAllowedGenerationAt');
+      if (timeString != null) {
+        setState(() {
+          _nextAllowedGenerationAt = DateTime.parse(timeString);
+        });
+      }
+    } catch (e) {
+      print('Error loading nextAllowedGenerationAt: $e');
+    }
   }
 
   Future<void> _updateCachedRecommendations() async {
@@ -50,6 +68,32 @@ class _RecommendationResultsScreenState
     } catch (e) {
       print('Error updating cached recommendations: $e');
     }
+  }
+
+  /// Build the "Get More Meals" button
+  /// Phase B Step 9: Countdown timer moved to Home Screen only
+  Widget _buildGetMoreMealsButton(
+      BuildContext context, ColorScheme colorScheme, ThemeData theme) {
+    // Always show "Get More Meals" button - countdown is now handled on Home Screen
+    return SizedBox(
+      width: double.infinity,
+      child: FilledButton(
+        onPressed: () {
+          // Navigate back to HomeScreen where countdown timer is displayed
+          Navigator.pushAndRemoveUntil(
+            context,
+            MaterialPageRoute(builder: (context) => const HomeScreen()),
+            (Route<dynamic> route) => false,
+          );
+        },
+        style: FilledButton.styleFrom(
+          backgroundColor: colorScheme.primary,
+          foregroundColor: colorScheme.onPrimary,
+          padding: const EdgeInsets.symmetric(vertical: 16.0),
+        ),
+        child: const Text('✨ Get More Meals'),
+      ),
+    );
   }
 
   @override
@@ -78,53 +122,76 @@ class _RecommendationResultsScreenState
         ],
       ),
       body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
-          child: ListView.builder(
-            itemCount: _localRecommendations.length,
-            itemBuilder: (BuildContext context, int index) {
-              final recommendation = _localRecommendations[index];
-              return RecommendationCard(
-                recommendation: recommendation,
-                showTransparencyFeatures: recommendation.healthScore > 0.0,
-                onTap: () async {
-                  final result = await Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => RecommendationDetailScreen(
-                        recommendation: recommendation,
-                      ),
-                    ),
-                  );
+        child: Column(
+          children: [
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+                child: ListView.builder(
+                  itemCount: _localRecommendations.length,
+                  itemBuilder: (BuildContext context, int index) {
+                    final recommendation = _localRecommendations[index];
+                    return RecommendationCard(
+                      recommendation: recommendation,
+                      showTransparencyFeatures: recommendation.healthScore > 0.0,
+                      onTap: () async {
+                        final result = await Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => RecommendationDetailScreen(
+                              recommendation: recommendation,
+                            ),
+                          ),
+                        );
 
-                  if (result == true && mounted) {
-                    // Remove the item from the list first.
-                    _localRecommendations.remove(recommendation);
+                        if (result == true && mounted) {
+                          // Remove the item from the list first.
+                          _localRecommendations.remove(recommendation);
 
-                    // Update the cache
-                    await _updateCachedRecommendations();
+                          // Update the cache
+                          await _updateCachedRecommendations();
 
-                    // Check if the list is now empty.
-                    if (_localRecommendations.isEmpty) {
-                      // Schedule notification for batch complete (Tomorrow at 6 PM)
-                      await NotificationService().scheduleBatchCompleteNotification();
-                      
-                      // If it's the last recommendation, navigate to the HomeScreen
-                      // and clear the navigation stack.
-                      Navigator.pushAndRemoveUntil(
-                        context,
-                        MaterialPageRoute(builder: (context) => const HomeScreen()),
-                        (Route<dynamic> route) => false,
-                      );
-                    } else {
-                      // Otherwise, just rebuild the screen to show the updated list.
-                      setState(() {});
-                    }
-                  }
-                },
-              );
-            },
-          ),
+                          // Reload the nextAllowedGenerationAt from SharedPreferences
+                          await _loadNextAllowedGenerationTime();
+
+                          // Check if the list is now empty.
+                          if (_localRecommendations.isEmpty) {
+                            // Schedule notification for batch complete (Tomorrow at 6 PM)
+                            await NotificationService().scheduleBatchCompleteNotification();
+
+                            // If nextAllowedGenerationAt is in the future, stay on this screen
+                            // Otherwise, navigate to HomeScreen
+                            if (_nextAllowedGenerationAt == null ||
+                                DateTime.now()
+                                    .isAfter(_nextAllowedGenerationAt!)) {
+                              Navigator.pushAndRemoveUntil(
+                                context,
+                                MaterialPageRoute(
+                                    builder: (context) => const HomeScreen()),
+                                (Route<dynamic> route) => false,
+                              );
+                            } else {
+                              // Rebuilding with empty list to show the "Get More Meals" button
+                              setState(() {});
+                            }
+                          } else {
+                            // Otherwise, just rebuild the screen to show the updated list.
+                            setState(() {});
+                          }
+                        }
+                      },
+                    );
+                  },
+                ),
+              ),
+            ),
+            // Footer with "Get More Meals" button
+            if (_localRecommendations.isEmpty)
+              Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: _buildGetMoreMealsButton(context, colorScheme, theme),
+              ),
+          ],
         ),
       ),
       // Placeholder for the main bottom navigation bar

@@ -12,6 +12,9 @@ import 'package:ai_food_app/recommendation_history_screen.dart'; // Import Histo
 import 'package:ai_food_app/login_screen.dart'; // For potential re-login on auth error
 import 'package:ai_food_app/config.dart';
 import 'package:ai_food_app/services/notification_service.dart';
+import 'package:ai_food_app/services/recommendation_service.dart';
+import 'package:ai_food_app/models/recommendation_status.dart';
+import 'package:ai_food_app/widgets/countdown_button.dart';
 
 /// HomeScreen is the main dashboard screen displayed after a user logs in.
 ///
@@ -32,6 +35,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   bool _isExperimentComplete = false;
   List<AiRecommendation>? _cachedRecommendations;
   int _totalFeedbacksSubmitted = 0;
+  
+  // UI state for displaying status information
+  RecommendationStatus? _currentStatus;
+  
+  // Phase B: Status polling
+  Timer? _statusPollingTimer;
+  final _recommendationService = RecommendationService();
 
   @override
   void initState() {
@@ -44,6 +54,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     _fetchProfile();
     _loadCachedRecommendations();
     
+    // Phase B: Start status polling to track recommendation generation
+    _startStatusPolling();
+    
     // 2. CANCEL NOTIFICATIONS (Since user is now looking at the app)
     NotificationService().cancelAllNotifications();
   }
@@ -51,6 +64,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    // Phase B: Stop status polling when leaving screen
+    _stopStatusPolling();
     super.dispose();
   }
 
@@ -102,6 +117,63 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       }
     } catch (e) {
       print('Error in _checkAndScheduleNotification: $e');
+    }
+  }
+  
+  /// Phase B Step 6: Start polling for recommendation status
+  /// Polls every 2 seconds to check if recommendations are ready or if generation is complete
+  void _startStatusPolling() {
+    // Don't start polling if already running
+    if (_statusPollingTimer != null) {
+      return;
+    }
+    
+    print('[STATUS_POLLING] Starting status polling...');
+    
+    // First poll immediately
+    _pollStatus();
+    
+    // Then start recurring polls every 2 seconds
+    _statusPollingTimer = Timer.periodic(const Duration(seconds: 2), (_) {
+      _pollStatus();
+    });
+  }
+  
+  /// Phase B Step 6: Stop status polling
+  void _stopStatusPolling() {
+    if (_statusPollingTimer != null) {
+      print('[STATUS_POLLING] Stopping status polling...');
+      _statusPollingTimer!.cancel();
+      _statusPollingTimer = null;
+    }
+  }
+  
+  /// Phase B Step 6: Poll status from backend
+  Future<void> _pollStatus() async {
+    if (!mounted) return;
+    
+    try {
+      final status = await _recommendationService.checkStatus();
+      
+      if (!mounted) return;
+      
+      print('[STATUS_POLLING] Status: ${status.status}, canGenerate: ${status.canGenerateNow}');
+      
+      // Update UI with new status
+      setState(() {
+        _currentStatus = status;
+      });
+      
+      // Phase B Step 7: Auto-navigate to recommendations when ready
+      // If status is "ready" and user isn't already loading, navigate to recommendations
+      if (status.isReady && !_isLoadingRecommendations && _cachedRecommendations == null) {
+        print('[STATUS_POLLING] Recommendations ready! Fetching...');
+        await _getTodaysRecommendations();
+      }
+      
+    } catch (e) {
+      print('[STATUS_POLLING] Error checking status: $e');
+      // Continue polling even if this check fails
     }
   }
   
@@ -181,33 +253,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
   }
 
+
   Future<void> _getTodaysRecommendations() async {
+    print('[RECOMMENDATIONS] User tapped "Find a Meal"');
+    
     setState(() {
       _isLoadingRecommendations = true;
     });
-
-    // Show a loading dialog that is not dismissible.
-    showDialog(
-      context: context,
-      barrierDismissible: false, // User must wait for the process to complete.
-      builder: (BuildContext context) {
-        return AlertDialog(
-          content: Row(
-            children: [
-              const CircularProgressIndicator(),
-              const SizedBox(width: 24),
-              Expanded(
-                // Use Expanded to prevent overflow if text is long
-                child: Text(
-                  "Our AI is crafting your personalized recommendations...",
-                  style: Theme.of(context).textTheme.bodyLarge,
-                ),
-              ),
-            ],
-          ),
-        );
-      },
-    );
 
     try {
       const storage = FlutterSecureStorage();
@@ -222,40 +274,76 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         return;
       }
 
+      // Send recommendation request (backend takes ~17-25 seconds to generate)
+      print('[RECOMMENDATIONS] Sending POST to /api/generate-recommendations...');
       final uri = Uri.parse('${AppConfig.apiBaseUrl}/api/generate-recommendations');
       final response = await http.post(
         uri,
         headers: {'Authorization': 'Bearer $token'},
-      ).timeout(const Duration(seconds: 90));
+      ).timeout(const Duration(seconds: 40)); // Allow full backend processing time
 
       if (!mounted) return;
 
       if (response.statusCode == 200) {
-        // First, pop the loading dialog
-        Navigator.of(context).pop();
-
-        final List<dynamic> recsJson =
-            jsonDecode(response.body)['recommendations'];
-
-        // Parse the new AI recommendation format
-        final List<AiRecommendation> aiRecommendations = recsJson
-            .map((json) => AiRecommendation.fromJson(json))
-            .toList();
-
-        // Cache the recommendations
-        await _cacheRecommendations(aiRecommendations);
-
-        Navigator.push(
+        print('[RECOMMENDATIONS] ✅ Recommendations generated successfully!');
+        
+        try {
+          final jsonResponse = jsonDecode(response.body);
+          
+          // Extract recommendations array
+          final recsList = jsonResponse['recommendations'] as List?;
+          if (recsList == null || recsList.isEmpty) {
+            throw Exception('No recommendations in response');
+          }
+          
+          print('[RECOMMENDATIONS] Parsing ${recsList.length} recommendations...');
+          
+          // Convert to AiRecommendation objects
+          final recommendations = recsList
+              .map((rec) => AiRecommendation.fromJson(rec as Map<String, dynamic>))
+              .toList();
+          
+          print('[RECOMMENDATIONS] ✅ Converted ${recommendations.length} recommendations to objects');
+          
+          // Extract and save timer
+          final nextAllowedAt = jsonResponse['nextAllowedGenerationAt'];
+          if (nextAllowedAt != null) {
+            print('[RECOMMENDATIONS] Next generation allowed at: $nextAllowedAt');
+            final prefs = await SharedPreferences.getInstance();
+            await prefs.setString('nextAllowedGenerationAt', nextAllowedAt);
+            print('[RECOMMENDATIONS] ✅ Saved timer to SharedPreferences');
+          }
+          
+          // Cache the recommendations
+          await _cacheRecommendations(recommendations);
+          print('[RECOMMENDATIONS] ✅ Cached recommendations');
+          
+          if (!mounted) return;
+          
+          // Navigate to recommendations screen
+          print('[RECOMMENDATIONS] 🚀 Navigating to RecommendationResultsScreen...');
+          Navigator.push(
             context,
             MaterialPageRoute(
               builder: (context) => RecommendationResultsScreen(
-                recommendations: aiRecommendations, // Pass the full AiRecommendation list
-                // The showTransparencyFeatures flag can be determined by another logic if needed
+                recommendations: recommendations,
               ),
             ),
           );
+          
+        } catch (parseError) {
+          print('[RECOMMENDATIONS] ❌ Error parsing response: $parseError');
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Error processing recommendations: $parseError'),
+                backgroundColor: Colors.redAccent,
+              ),
+            );
+          }
+        }
       } else if (response.statusCode == 401 || response.statusCode == 403) {
-        Navigator.of(context).pop();
+        print('[RECOMMENDATIONS] ❌ Unauthorized (401/403)');
         const storage = FlutterSecureStorage();
         await storage.delete(key: 'access_token');
         if (mounted) {
@@ -264,48 +352,60 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             const SnackBar(content: Text('Session expired. Please log in again.'), backgroundColor: Colors.redAccent),
           );
         }
-      } else if (response.statusCode == 404) {
-        Navigator.of(context).pop(); // Pop dialog for this case as well.
-        // The backend sends a specific message for 404, which is more of an info than an error.
-        final responseBody = jsonDecode(response.body);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(responseBody['detail'] ?? 'No new recommendations available at this time.'),
-            backgroundColor: Colors.blueGrey,
-          ),
-        );
-        setState(() {
-          _isExperimentComplete = true;
-        });
+      } else if (response.statusCode == 429) {
+        print('[RECOMMENDATIONS] ❌ Rate limited (429)');
+        if (mounted) {
+          try {
+            final responseBody = jsonDecode(response.body);
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(responseBody['detail'] ?? 'Please wait before requesting new recommendations.'),
+                backgroundColor: Colors.orangeAccent,
+              ),
+            );
+          } catch (e) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Please wait before requesting new recommendations.'),
+                backgroundColor: Colors.orangeAccent,
+              ),
+            );
+          }
+        }
       } else {
-        Navigator.of(context).pop(); // Pop dialog on failure
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
+        print('[RECOMMENDATIONS] ❌ Failed with status ${response.statusCode}');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
               content: Text('Failed to get recommendations: ${response.body}'),
-              backgroundColor: Colors.redAccent),
-        );
+              backgroundColor: Colors.redAccent,
+            ),
+          );
+        }
       }
     } on TimeoutException catch (_) {
+      print('[RECOMMENDATIONS] ❌ Request timed out');
       if (mounted) {
-        Navigator.of(context).pop(); // Pop dialog on timeout
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('The request timed out. Please try again.'), backgroundColor: Colors.orangeAccent),
         );
       }
     } catch (e) {
+      print('[RECOMMENDATIONS] ❌ Exception: $e');
       if (mounted) {
-        Navigator.of(context).pop(); // Pop dialog on other errors
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Could not connect to the server. Please check your connection.'), backgroundColor: Colors.redAccent),
         );
-        print('Error getting recommendations: $e');
       }
     } finally {
-      // The pop is now handled in each success/error path above.
-      // We only need to reset the loading state here.
       if (mounted) setState(() => _isLoadingRecommendations = false);
     }
   }
+
+
+
+  // DEPRECATED: Polling is no longer used. Countdown button shows timer instead.
+  // This code is kept for reference only.
 
   Future<void> _cacheRecommendations(List<AiRecommendation> recommendations) async {
     try {
@@ -416,24 +516,99 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     // Progress Counter Widget
                     _buildProgressCounterWidget(context, colorScheme, theme),
                     const SizedBox(height: 50.0),
-                    FilledButton(
-                      onPressed: _isLoadingRecommendations || _isExperimentComplete
-                          ? null
-                          : (_cachedRecommendations != null && _cachedRecommendations!.isNotEmpty)
-                              ? _continueCachedSession
-                              : _getTodaysRecommendations,
-                      style: FilledButton.styleFrom(
-                        backgroundColor: colorScheme.primary,
-                        foregroundColor: colorScheme.onPrimary,
-                        shape: const StadiumBorder(), // Ensures a pill shape
-                        padding: const EdgeInsets.symmetric(vertical: 25.0),
+                    // Status indicator (if generation is in progress)
+                    if (_currentStatus?.isGenerating == true)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 16.0),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                              vertical: 12.0, horizontal: 16.0),
+                          decoration: BoxDecoration(
+                            color: colorScheme.primaryContainer,
+                            borderRadius: BorderRadius.circular(8.0),
+                          ),
+                          child: Row(
+                            children: [
+                              SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  valueColor: AlwaysStoppedAnimation<Color>(
+                                      colorScheme.primary),
+                                ),
+                              ),
+                              const SizedBox(width: 12.0),
+                              Expanded(
+                                child: Text(
+                                  _currentStatus?.status == 'summarizing'
+                                      ? 'Summarizing your feedback...'
+                                      : 'AI is crafting your meals...',
+                                  style: theme.textTheme.bodyMedium?.copyWith(
+                                    color: colorScheme.onPrimaryContainer,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
                       ),
-                      child: Text(
-                        (_cachedRecommendations != null && _cachedRecommendations!.isNotEmpty)
-                            ? 'Continue Rating (${_cachedRecommendations!.length} left)'
-                            : 'Find a Meal',
+                    // Main button (Find a Meal / Continue / Countdown / etc.)
+                    if (_currentStatus?.nextAllowedGenerationAt != null &&
+                        !_currentStatus!.canGenerateNow)
+                      // Show countdown timer if generation is blocked
+                      CountdownButton(
+                        nextAvailableAt:
+                            _currentStatus!.nextAllowedGenerationAt!,
+                        onReady: () {
+                          // When countdown expires, update status
+                          setState(() {
+                            _currentStatus = RecommendationStatus(
+                              status: 'ready',
+                              recommendationsReadyAt:
+                                  _currentStatus?.recommendationsReadyAt,
+                              nextAllowedGenerationAt: null,
+                            );
+                          });
+                        },
+                      )
+                    else if (_cachedRecommendations != null &&
+                        _cachedRecommendations!.isNotEmpty)
+                      // Show "Continue Rating" button
+                      FilledButton(
+                        onPressed: _isLoadingRecommendations ||
+                                _isExperimentComplete ||
+                                (_currentStatus?.isGenerating == true)
+                            ? null
+                            : _continueCachedSession,
+                        style: FilledButton.styleFrom(
+                          backgroundColor: colorScheme.primary,
+                          foregroundColor: colorScheme.onPrimary,
+                          shape: const StadiumBorder(),
+                          padding:
+                              const EdgeInsets.symmetric(vertical: 25.0),
+                        ),
+                        child: Text(
+                          'Continue Rating (${_cachedRecommendations!.length} left)',
+                        ),
+                      )
+                    else
+                      // Show "Find a Meal" button
+                      FilledButton(
+                        onPressed: _isLoadingRecommendations ||
+                                _isExperimentComplete ||
+                                (_currentStatus?.isGenerating == true)
+                            ? null
+                            : _getTodaysRecommendations,
+                        style: FilledButton.styleFrom(
+                          backgroundColor: colorScheme.primary,
+                          foregroundColor: colorScheme.onPrimary,
+                          shape: const StadiumBorder(),
+                          padding:
+                              const EdgeInsets.symmetric(vertical: 25.0),
+                        ),
+                        child: const Text('✨ Find a Meal'),
                       ),
-                    ),
                     Visibility(
                       visible: _isExperimentComplete,
                       child: Padding(

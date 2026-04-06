@@ -9,11 +9,6 @@ This guide explains what changed in the backend and what the frontend needs to i
 - 📋 Frontend: Currently on `V2-notifications` branch, working with old backend
 - 🎯 Goal: Update frontend to work with Version2 backend
 
-**Timeline**: 
-- Main branch: Keep stable (pull from V2-notifications)
-- V2-notifications: Modify to support Version2 backend changes
-- New branch: `version2-frontend-integration` (for development)
-
 ---
 
 ## Part 1: READ THIS FIRST - Current Frontend Architecture
@@ -60,6 +55,8 @@ Read these files **in order** to understand current structure:
 6. **[lib/widgets/](ai_food_app/lib/widgets/)** (Various)
    - Custom widgets
    - **NEW WIDGET NEEDED**: CountdownButton (timer widget)
+
+Read other files to make yourself fimiliar with the structure of the Frontend
 
 ### Current API Integration
 
@@ -536,24 +533,14 @@ git pull origin V2-notifications
 git commit -m "Merge V2-notifications to main: Stable baseline"
 git push origin main
 
-# 2. CREATE: New feature branch for Version2 integration
-git checkout -b version2-frontend-integration main
 
-# 3. DEVELOP: Make all changes on this branch
+# 3. DEVELOP: Make all changes on  branch V2-notifications
 # ... implement all changes above ...
 # ... commit frequently: git commit -m "..."...
 
 # 4. TEST: Thoroughly test against backend
 # ... run all test scenarios ...
 
-# 5. MERGE: Back to V2-notifications for PR review
-git checkout V2-notifications
-git pull origin V2-notifications
-git merge version2-frontend-integration
-git commit -m "Phase N: Version2 frontend integration complete"
-
-# 6. PR: Create PR V2-notifications ← version2-frontend-integration
-# (Code review, testing approval)
 
 # 7. FINAL: After approval, merge to main
 git checkout main
