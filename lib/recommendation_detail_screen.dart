@@ -183,6 +183,15 @@ class _RecommendationDetailScreenState
         if (isFifthFeedback) {
           print('✅ 5th feedback detected - navigating to HomeScreen');
           
+          // Clear the recommendations cache so HomeScreen doesn't show stale
+          // "Continue Rating (1 left)" for the item we just rated.
+          try {
+            final prefs = await SharedPreferences.getInstance();
+            await prefs.remove('cached_recommendations');
+          } catch (e) {
+            print('Error clearing recommendations cache: $e');
+          }
+          
           if (!mounted) return;
           
           // Navigate directly to HomeScreen (replacing the entire stack)

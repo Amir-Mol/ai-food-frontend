@@ -165,15 +165,6 @@ class _RecommendationResultsScreenState
                         fontWeight: FontWeight.bold,
                       ),
                     ),
-                    const SizedBox(height: 8.0),
-                    // Progress counter
-                    Text(
-                      'You\'ve rated ${widget.totalRecommendationsGenerated}/100 recommendations so far',
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: colorScheme.onSurfaceVariant,
-                      ),
-                      textAlign: TextAlign.center,
-                    ),
                   ],
                 ),
               ),
