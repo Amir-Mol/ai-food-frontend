@@ -66,12 +66,12 @@ class RecommendationService {
     }
   }
 
-  /// Get pre-computed recommendations (synchronous, no wait)
+  /// Get pre-generated recommendations (synchronous, no wait)
   Future<List<AiRecommendation>> getRecommendations() async {
     try {
       final headers = await _getHeaders();
       final response = await http.get(
-        Uri.parse('$_baseUrl/api/recommendations'),
+        Uri.parse('$_baseUrl/api/recommendations/'),  // Fixed: Added trailing slash
         headers: headers,
       );
 

@@ -7,7 +7,9 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:ai_food_app/ai_recommendation.dart';
 import 'package:ai_food_app/widgets/compact_fsa_score_bar.dart';
-import 'package:ai_food_app/config.dart';import 'package:ai_food_app/login_screen.dart';
+import 'package:ai_food_app/config.dart';
+import 'package:ai_food_app/login_screen.dart';
+import 'package:ai_food_app/home_screen.dart';
 class RecommendationDetailScreen extends StatefulWidget {
   final AiRecommendation recommendation;
 
@@ -144,27 +146,56 @@ class _RecommendationDetailScreenState
           ),
         );
         
-        // Extract nextAllowedGenerationAt from response
+        // Save absolute deadline so home screen can compute correct remaining time after app re-open
         try {
           final responseBody = jsonDecode(response.body);
+          final prefs = await SharedPreferences.getInstance();
           if (responseBody['nextAllowedGenerationAt'] != null) {
-            final nextAllowedGenerationAt =
-                DateTime.parse(responseBody['nextAllowedGenerationAt']);
-            // Save to SharedPreferences so recommendation_results_screen can access it
-            final prefs = await SharedPreferences.getInstance();
             await prefs.setString(
-              'nextAllowedGenerationAt',
-              nextAllowedGenerationAt.toIso8601String(),
+              'nextAllowedGenerationDeadline',
+              responseBody['nextAllowedGenerationAt'] as String,
             );
+          } else if (responseBody['waitingMinutes'] != null) {
+            // Fallback: derive deadline from minutes (less accurate after app re-open)
+            final waitingMinutes = responseBody['waitingMinutes'] as int;
+            final deadline = DateTime.now().toUtc().add(Duration(minutes: waitingMinutes));
+            await prefs.setString('nextAllowedGenerationDeadline', deadline.toIso8601String());
           }
         } catch (e) {
-          print('Error extracting nextAllowedGenerationAt: $e');
+          print('Error saving generation deadline: $e');
         }
         
         // Increment the global progress counter
         await _incrementProgressCounter();
-        // After showing feedback, pop back to the previous screen.
-        Navigator.pop(context, true);
+        
+        // PHASE C Step 11: Detect 5th feedback and auto-trigger
+        // Check if response indicates this was the 5th feedback
+        bool isFifthFeedback = false;
+        try {
+          final responseBody = jsonDecode(response.body);
+          isFifthFeedback = responseBody['isFifthFeedback'] == true;
+          print('Feedback response: isFifthFeedback=$isFifthFeedback, feedbackCount=${responseBody['feedbackCount']}');
+        } catch (e) {
+          print('Error checking isFifthFeedback from response: $e');
+        }
+        
+// If this was the 5th feedback, navigate to HomeScreen
+        if (isFifthFeedback) {
+          print('✅ 5th feedback detected - navigating to HomeScreen');
+          
+          if (!mounted) return;
+          
+          // Navigate directly to HomeScreen (replacing the entire stack)
+          // HomeScreen will show countdown timer and auto-trigger when ready
+          Navigator.of(context).pushAndRemoveUntil(
+            MaterialPageRoute(builder: (context) => const HomeScreen()),
+            (Route<dynamic> route) => false,
+          );
+          print('Navigated to HomeScreen');
+        } else {
+          // Not 5th feedback - normal pop behavior (return to recommendations list)
+          Navigator.pop(context, true);
+        }
       } else if (response.statusCode == 401 || response.statusCode == 403) {
         // Token expired - force logout
         const storage = FlutterSecureStorage();

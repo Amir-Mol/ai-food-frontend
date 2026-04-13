@@ -140,7 +140,6 @@ class _OnboardingTasteProfileScreenState
         'dislikedIngredients': _dislikedIngredientsController.text.split(',').map((e) => e.trim()).where((e) => e.isNotEmpty).toList(),
         'favoriteCuisines': _selectedFavoriteCuisines.toList(),
         'otherCuisine': _otherCuisineController.text,
-        'onboardingCompleted': true, // Mark onboarding as complete
       };
 
       // Remove empty fields to avoid sending them

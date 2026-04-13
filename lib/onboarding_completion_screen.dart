@@ -1,8 +1,6 @@
 import 'package:flutter/material.dart';
-import 'dart:async';
 import 'package:ai_food_app/home_screen.dart'; // Import the HomeScreen
 import 'package:ai_food_app/tutorial_screen.dart'; // Import the TutorialScreen
-import 'package:ai_food_app/recommendation_results_screen.dart';
 import 'package:ai_food_app/services/recommendation_service.dart';
 
 
@@ -18,7 +16,6 @@ class _OnboardingCompletionScreenState extends State<OnboardingCompletionScreen>
   bool _dataProcessingConsentGiven = false;
   bool _isGeneratingRecommendations = false;
   final _recommendationService = RecommendationService();
-  Timer? _statusPollingTimer;
 
   // Function to navigate to the tutorial screen.
   void _completeOnboardingFunction() {
@@ -30,47 +27,6 @@ class _OnboardingCompletionScreenState extends State<OnboardingCompletionScreen>
     );
   }
 
-  /// Start polling for recommendation status
-  void _startStatusPolling() {
-    _statusPollingTimer = Timer.periodic(const Duration(seconds: 3), (_) async {
-      if (!mounted) return;
-
-      try {
-        final status = await _recommendationService.checkStatus();
-
-        if (!mounted) return;
-
-        if (status.isReady) {
-          // Recommendations are ready - get them and navigate
-          _cancelStatusPolling();
-          final recommendations =
-              await _recommendationService.getRecommendations();
-
-          if (!mounted) return;
-
-          Navigator.pushAndRemoveUntil(
-            context,
-            MaterialPageRoute(
-              builder: (context) => RecommendationResultsScreen(
-                recommendations: recommendations,
-              ),
-            ),
-            (Route<dynamic> route) => false,
-          );
-        }
-      } catch (e) {
-        print('Error checking status: $e');
-        // Continue polling even on error
-      }
-    });
-  }
-
-  /// Cancel status polling
-  void _cancelStatusPolling() {
-    _statusPollingTimer?.cancel();
-    _statusPollingTimer = null;
-  }
-
   /// Handle "Explore Recommendations" button tap
   Future<void> _handleExploreRecommendations() async {
     setState(() {
@@ -78,46 +34,22 @@ class _OnboardingCompletionScreenState extends State<OnboardingCompletionScreen>
     });
 
     try {
-      // Trigger async recommendation generation
+      // Trigger async recommendation generation in the backend
       await _recommendationService.completeOnboarding();
 
       if (!mounted) return;
 
-      // Show loading dialog and start polling
-      showDialog(
-        context: context,
-        barrierDismissible: false,
-        builder: (BuildContext context) {
-          return AlertDialog(
-            title: const Text('Crafting Your Meals 🤖'),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const SizedBox(height: 16),
-                const CircularProgressIndicator(),
-                const SizedBox(height: 16),
-                Text(
-                  'AI is analyzing your preferences...',
-                  textAlign: TextAlign.center,
-                  style: Theme.of(context).textTheme.bodyMedium,
-                ),
-              ],
-            ),
-          );
-        },
-      );
-
-      // Start polling for status
-      _startStatusPolling();
+      // Don't wait for recommendations - navigate to Tutorial immediately!
+      // Backend is now generating recommendations in the background
+      // Tutorial will explain what's happening
+      // Home screen will handle status polling and button states
+      _completeOnboardingFunction();
     } catch (e) {
       setState(() {
         _isGeneratingRecommendations = false;
       });
 
       if (!mounted) return;
-
-      // Show error and dismiss loading dialog if shown
-      Navigator.pop(context);
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -130,7 +62,6 @@ class _OnboardingCompletionScreenState extends State<OnboardingCompletionScreen>
 
   @override
   void dispose() {
-    _cancelStatusPolling();
     super.dispose();
   }
 

@@ -15,10 +15,14 @@ import 'package:ai_food_app/widgets/countdown_button.dart';
 /// Displays a list of food recommendations.
 class RecommendationResultsScreen extends StatefulWidget {
   final List<AiRecommendation> recommendations;
+  final int currentCycleNumber;                    // PHASE D: Current cycle (1-20)
+  final int totalRecommendationsGenerated;         // PHASE D: Total recommendations (0-100)
 
   const RecommendationResultsScreen({
     super.key,
     required this.recommendations,
+    this.currentCycleNumber = 0,                   // PHASE D: Default to 0
+    this.totalRecommendationsGenerated = 0,        // PHASE D: Default to 0
   });
 
   @override
@@ -29,28 +33,50 @@ class RecommendationResultsScreen extends StatefulWidget {
 class _RecommendationResultsScreenState
     extends State<RecommendationResultsScreen> {
   late List<AiRecommendation> _localRecommendations;
-  DateTime? _nextAllowedGenerationAt;
+  int? _waitingMinutes;
 
   @override
   void initState() {
     super.initState();
     // Create a mutable copy of the recommendations to allow for removal.
     _localRecommendations = List.from(widget.recommendations);
-    _loadNextAllowedGenerationTime();
+    _loadWaitingMinutes();
+    
+    // Check if auto-trigger was just set (5th feedback submitted)
+    _checkAndHandleAutoTrigger();
   }
-
-  /// Load nextAllowedGenerationAt from SharedPreferences
-  Future<void> _loadNextAllowedGenerationTime() async {
+  
+  /// Check if auto-trigger is in progress (5th feedback was just submitted)
+  /// If so, navigate to HomeScreen to wait for next batch
+  Future<void> _checkAndHandleAutoTrigger() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      final timeString = prefs.getString('nextAllowedGenerationAt');
-      if (timeString != null) {
+      final autoTrigger = prefs.getBool('autoTriggerInProgress') ?? false;
+      
+      if (autoTrigger && mounted) {
+        print('[AUTO_TRIGGER] 5th feedback detected on RecommendationResultsScreen - navigating to HomeScreen');
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute(builder: (context) => const HomeScreen()),
+          (Route<dynamic> route) => false,
+        );
+      }
+    } catch (e) {
+      print('[AUTO_TRIGGER] Error checking auto-trigger: $e');
+    }
+  }
+
+  /// Load waitingMinutes from SharedPreferences
+  Future<void> _loadWaitingMinutes() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final minutes = prefs.getInt('waitingMinutes');
+      if (minutes != null) {
         setState(() {
-          _nextAllowedGenerationAt = DateTime.parse(timeString);
+          _waitingMinutes = minutes;
         });
       }
     } catch (e) {
-      print('Error loading nextAllowedGenerationAt: $e');
+      print('Error loading waitingMinutes: $e');
     }
   }
 
@@ -124,6 +150,33 @@ class _RecommendationResultsScreenState
       body: SafeArea(
         child: Column(
           children: [
+            // PHASE D: Cycle counter and progress display
+            if (widget.currentCycleNumber > 0)
+              Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    // Cycle counter
+                    Text(
+                      'Cycle ${widget.currentCycleNumber}/20',
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        color: colorScheme.primary,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 8.0),
+                    // Progress counter
+                    Text(
+                      'You\'ve rated ${widget.totalRecommendationsGenerated}/100 recommendations so far',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: colorScheme.onSurfaceVariant,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  ],
+                ),
+              ),
             Expanded(
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
@@ -151,19 +204,17 @@ class _RecommendationResultsScreenState
                           // Update the cache
                           await _updateCachedRecommendations();
 
-                          // Reload the nextAllowedGenerationAt from SharedPreferences
-                          await _loadNextAllowedGenerationTime();
+                          // Reload the waitingMinutes from SharedPreferences
+                          await _loadWaitingMinutes();
 
                           // Check if the list is now empty.
                           if (_localRecommendations.isEmpty) {
                             // Schedule notification for batch complete (Tomorrow at 6 PM)
                             await NotificationService().scheduleBatchCompleteNotification();
 
-                            // If nextAllowedGenerationAt is in the future, stay on this screen
+                            // If waitingMinutes is set, stay on this screen
                             // Otherwise, navigate to HomeScreen
-                            if (_nextAllowedGenerationAt == null ||
-                                DateTime.now()
-                                    .isAfter(_nextAllowedGenerationAt!)) {
+                            if (_waitingMinutes == null || _waitingMinutes! <= 0) {
                               Navigator.pushAndRemoveUntil(
                                 context,
                                 MaterialPageRoute(

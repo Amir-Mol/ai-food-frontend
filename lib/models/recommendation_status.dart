@@ -2,12 +2,12 @@
 class RecommendationStatus {
   final String status; // "idle" | "summarizing" | "generating" | "ready"
   final DateTime? recommendationsReadyAt;
-  final DateTime? nextAllowedGenerationAt;
+  final int? waitingMinutes;  // Minutes to wait before next generation
 
   RecommendationStatus({
     required this.status,
     this.recommendationsReadyAt,
-    this.nextAllowedGenerationAt,
+    this.waitingMinutes,
   });
 
   factory RecommendationStatus.fromJson(Map<String, dynamic> json) {
@@ -16,8 +16,8 @@ class RecommendationStatus {
       recommendationsReadyAt: json['recommendationsReadyAt'] != null
           ? DateTime.parse(json['recommendationsReadyAt'])
           : null,
-      nextAllowedGenerationAt: json['nextAllowedGenerationAt'] != null
-          ? DateTime.parse(json['nextAllowedGenerationAt'])
+      waitingMinutes: json['waitingMinutes'] != null
+          ? json['waitingMinutes'] as int
           : null,
     );
   }
@@ -26,7 +26,7 @@ class RecommendationStatus {
     return {
       'status': status,
       'recommendationsReadyAt': recommendationsReadyAt?.toIso8601String(),
-      'nextAllowedGenerationAt': nextAllowedGenerationAt?.toIso8601String(),
+      'waitingMinutes': waitingMinutes,
     };
   }
 
@@ -38,14 +38,10 @@ class RecommendationStatus {
       status == 'summarizing' || status == 'generating';
 
   /// Check if user can request new generation
-  bool get canGenerateNow =>
-      nextAllowedGenerationAt == null ||
-      DateTime.now().isAfter(nextAllowedGenerationAt!);
+  bool get canGenerateNow => waitingMinutes == null || waitingMinutes! <= 0;
 
-  /// Get remaining time until next generation is allowed
-  Duration? getTimeUntilNextGeneration() {
-    if (nextAllowedGenerationAt == null) return null;
-    final remaining = nextAllowedGenerationAt!.difference(DateTime.now());
-    return remaining.isNegative ? Duration.zero : remaining;
+  /// Get remaining time until next generation is allowed (in minutes)
+  int? getMinutesUntilNextGeneration() {
+    return waitingMinutes;
   }
 }

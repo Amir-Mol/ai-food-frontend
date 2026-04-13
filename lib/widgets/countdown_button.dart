@@ -3,10 +3,10 @@ import 'dart:async';
 
 /// A button that shows a countdown timer until the next meal generation is allowed
 /// 
-/// Displays "⏱️ Next meal in MM:SS" and is disabled during the countdown.
+/// Displays "⏱️ X mins remaining" and is disabled during the countdown.
 /// When the countdown reaches zero, calls [onReady] callback.
 class CountdownButton extends StatefulWidget {
-  final DateTime nextAvailableAt;
+  final int waitingMinutes;  // Number of minutes to wait
   final VoidCallback onReady;
   final double? width;
   final double? height;
@@ -14,7 +14,7 @@ class CountdownButton extends StatefulWidget {
 
   const CountdownButton({
     super.key,
-    required this.nextAvailableAt,
+    required this.waitingMinutes,
     required this.onReady,
     this.width,
     this.height,
@@ -27,29 +27,22 @@ class CountdownButton extends StatefulWidget {
 
 class _CountdownButtonState extends State<CountdownButton> {
   late Timer _timer;
-  late Duration _remainingTime;
+  late int _remainingMinutes;
   bool _isExpired = false;
 
   @override
   void initState() {
     super.initState();
-    _updateRemainingTime();
+    _remainingMinutes = widget.waitingMinutes;
     _startTimer();
   }
 
-  void _updateRemainingTime() {
-    _remainingTime = widget.nextAvailableAt.difference(DateTime.now());
-    if (_remainingTime.isNegative) {
-      _remainingTime = Duration.zero;
-    }
-  }
-
   void _startTimer() {
-    _timer = Timer.periodic(const Duration(seconds: 1), (_) {
-      _updateRemainingTime();
-
+    _timer = Timer.periodic(const Duration(minutes: 1), (_) {
       setState(() {
-        if (_remainingTime.inSeconds <= 0) {
+        _remainingMinutes--;
+        
+        if (_remainingMinutes <= 0) {
           _isExpired = true;
           _timer.cancel();
           // Call the callback to notify parent
@@ -65,10 +58,11 @@ class _CountdownButtonState extends State<CountdownButton> {
     super.dispose();
   }
 
-  String _formatDuration(Duration duration) {
-    final minutes = duration.inMinutes;
-    final seconds = duration.inSeconds % 60;
-    return '$minutes:${seconds.toString().padLeft(2, '0')}';
+  String _formatMinutes(int minutes) {
+    if (minutes == 1) {
+      return "1 min remaining";
+    }
+    return "$minutes mins remaining";
   }
 
   @override
@@ -97,7 +91,7 @@ class _CountdownButtonState extends State<CountdownButton> {
         onPressed: null, // Disabled
         icon: const Icon(Icons.schedule),
         label: Text(
-          '⏱️ Next meal in ${_formatDuration(_remainingTime)}',
+          '⏱️ ${_formatMinutes(_remainingMinutes)}',
           style: widget.textStyle ?? const TextStyle(fontSize: 16),
         ),
       ),

@@ -33,16 +33,20 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   bool _isLoadingProfile = true;
   String _userName = 'User';
   bool _isExperimentComplete = false;
+  int _totalRecommendationsGenerated = 0;  // PHASE D: Track total recommendations
+  int _currentCycleNumber = 0;              // PHASE D: Track current cycle
   List<AiRecommendation>? _cachedRecommendations;
   int _totalFeedbacksSubmitted = 0;
   
   // UI state for displaying status information
   RecommendationStatus? _currentStatus;
-  DateTime? _nextAllowedGenerationAt; // Load immediately from SharedPreferences
+  DateTime? _nextRecommendationDeadline; // Calculated from waitingMinutes
+  int? _waitingMinutes; // Minutes to wait before next generation
   
   // Phase B: Status polling
   Timer? _statusPollingTimer;
   final _recommendationService = RecommendationService();
+
 
   @override
   void initState() {
@@ -54,7 +58,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     
     _fetchProfile();
     _loadCachedRecommendations();
-    _loadNextAllowedGenerationTime(); // Load timer immediately for early UI update
+    _loadWaitingMinutes(); // Load timer immediately for early UI update
     
     // Phase B: Start status polling to track recommendation generation
     _startStatusPolling();
@@ -122,7 +126,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
   }
   
-  /// Phase B Step 6: Start polling for recommendation status
+
   /// Polls every 2 seconds to check if recommendations are ready or if generation is complete
   void _startStatusPolling() {
     // Don't start polling if already running
@@ -154,6 +158,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   Future<void> _pollStatus() async {
     if (!mounted) return;
     
+    // Skip polling if user has incomplete batch (already rating items)
+    // UNLESS auto-trigger is in progress (need to continue polling for new batch)
+    if (_cachedRecommendations != null && _cachedRecommendations!.isNotEmpty) {
+      print('[STATUS_POLLING] Skipping poll - user has incomplete batch (${_cachedRecommendations!.length} items remaining)');
+      return;
+    }
+    
     try {
       final status = await _recommendationService.checkStatus();
       
@@ -166,13 +177,16 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         _currentStatus = status;
       });
       
-      // Phase B Step 7: Auto-navigate to recommendations when ready
-      // Only fetch if user CAN generate (not rate-limited)
-      if (status.isReady && !_isLoadingRecommendations && _cachedRecommendations == null && status.canGenerateNow) {
-        print('[STATUS_POLLING] Recommendations ready! Fetching...');
-        await _getTodaysRecommendations();
+      // Phase B Step 7: update UI with status - user must manually tap "Find a Meal" button
+
+      // Flaw 5 fix: stop polling once recommendations are ready.
+      // No need to keep hitting the backend every 2 seconds when the button is
+      // already enabled. Polling restarts when user returns from the
+      // recommendations screen (see .then(_) handler in _getTodaysRecommendations).
+      if (status.status == 'ready') {
+        _stopStatusPolling();
       }
-      
+
     } catch (e) {
       print('[STATUS_POLLING] Error checking status: $e');
       // Continue polling even if this check fails
@@ -217,22 +231,25 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
   }
 
-  /// Load nextAllowedGenerationAt from SharedPreferences immediately
-  /// This allows us to show the countdown timer while generation is happening in the background
-  Future<void> _loadNextAllowedGenerationTime() async {
+  /// Load the next-generation deadline from SharedPreferences.
+  /// Uses an absolute ISO-8601 timestamp so the countdown stays accurate
+  /// even if the app is closed and reopened.
+  Future<void> _loadWaitingMinutes() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      final timeString = prefs.getString('nextAllowedGenerationAt');
-      if (timeString != null) {
-        final parsedTime = DateTime.parse(timeString);
-        if (mounted) {
+      final deadlineStr = prefs.getString('nextAllowedGenerationDeadline');
+      if (deadlineStr != null) {
+        final deadline = DateTime.parse(deadlineStr).toLocal();
+        final remaining = deadline.difference(DateTime.now()).inMinutes;
+        if (remaining > 0 && mounted) {
           setState(() {
-            _nextAllowedGenerationAt = parsedTime;
+            _waitingMinutes = remaining;
+            _nextRecommendationDeadline = deadline;
           });
         }
       }
     } catch (e) {
-      print('Error loading nextAllowedGenerationAt: $e');
+      print('Error loading waitingMinutes: $e');
     }
   }
 
@@ -258,13 +275,23 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         final String? serverName = data['name'];
         final String serverEmail = data['email'] ?? '';
         final int totalFeedbacks = data['total_feedbacks_submitted'] ?? 0;
+        
+        // PHASE D: Fetch experiment status
+        final bool isExperimentComplete = data['isExperimentComplete'] ?? false;
+        final int totalRecommendationsGenerated = data['totalRecommendationsGenerated'] ?? 0;
+        final int currentCycleNumber = data['currentCycleNumber'] ?? 0;
 
         setState(() {
           _userName = (serverName != null && serverName.isNotEmpty)
               ? serverName
               : serverEmail.split('@').first;
           _totalFeedbacksSubmitted = totalFeedbacks;
+          _isExperimentComplete = isExperimentComplete;
+          _totalRecommendationsGenerated = totalRecommendationsGenerated;
+          _currentCycleNumber = currentCycleNumber;
         });
+        
+        print('[PHASE_D] Experiment status: complete=$isExperimentComplete, total=$totalRecommendationsGenerated, cycle=$currentCycleNumber');
       }
     } catch (e) {
       // Silently fail on home screen, as the default name is acceptable.
@@ -296,8 +323,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       }
 
       // Phase C: Fetch pre-generated recommendations (instant, no wait)
-      print('[RECOMMENDATIONS] Sending GET to /api/recommendations (fetching pre-generated)...');
-      final uri = Uri.parse('${AppConfig.apiBaseUrl}/api/recommendations');
+      print('[RECOMMENDATIONS] Sending GET to /api/recommendations/ (fetching pre-generated)...');
+      final uri = Uri.parse('${AppConfig.apiBaseUrl}/api/recommendations/');
       final response = await http.get(
         uri,
         headers: {'Authorization': 'Bearer $token'},
@@ -345,6 +372,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             MaterialPageRoute(
               builder: (context) => RecommendationResultsScreen(
                 recommendations: recommendations,
+                currentCycleNumber: _currentCycleNumber,          // PHASE D
+                totalRecommendationsGenerated: _totalRecommendationsGenerated,  // PHASE D
               ),
             ),
           ).then((_) {
@@ -439,6 +468,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       MaterialPageRoute(
         builder: (context) => RecommendationResultsScreen(
           recommendations: _cachedRecommendations!,
+          currentCycleNumber: _currentCycleNumber,          // PHASE D
+          totalRecommendationsGenerated: _totalRecommendationsGenerated,  // PHASE D
         ),
       ),
     );
@@ -587,40 +618,40 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                           'Continue Rating (${_cachedRecommendations!.length} left)',
                         ),
                       )
-                    else if (_nextAllowedGenerationAt != null &&
-                        _nextAllowedGenerationAt!.isAfter(DateTime.now()))
+                    else if (_waitingMinutes != null && _waitingMinutes! > 0)
                       // Show countdown timer immediately using loaded value from SharedPreferences
                       // This shows countdown while generation is happening in the background
                       CountdownButton(
-                        nextAvailableAt: _nextAllowedGenerationAt!,
+                        waitingMinutes: _waitingMinutes!,
                         onReady: () {
                           // When countdown expires, clear the local timer and reset status
                           setState(() {
-                            _nextAllowedGenerationAt = null;
+                            _waitingMinutes = null;
+                            _nextRecommendationDeadline = null;
                             _currentStatus = RecommendationStatus(
                               status: 'ready',
                               recommendationsReadyAt:
                                   _currentStatus?.recommendationsReadyAt,
-                              nextAllowedGenerationAt: null,
+                              waitingMinutes: null,
                             );
                           });
                         },
                       )
-                    else if (_currentStatus?.nextAllowedGenerationAt != null &&
-                        _currentStatus!.nextAllowedGenerationAt!.isAfter(DateTime.now()))
+                    else if (_currentStatus?.waitingMinutes != null &&
+                        _currentStatus!.waitingMinutes! > 0)
                       // Fallback: Show countdown timer from status if loaded value expired
                       CountdownButton(
-                        nextAvailableAt:
-                            _currentStatus!.nextAllowedGenerationAt!,
+                        waitingMinutes: _currentStatus!.waitingMinutes!,
                         onReady: () {
                           // When countdown expires, update status
                           setState(() {
-                            _nextAllowedGenerationAt = null;
+                            _waitingMinutes = null;
+                            _nextRecommendationDeadline = null;
                             _currentStatus = RecommendationStatus(
                               status: 'ready',
                               recommendationsReadyAt:
                                   _currentStatus?.recommendationsReadyAt,
-                              nextAllowedGenerationAt: null,
+                              waitingMinutes: null,
                             );
                           });
                         },
