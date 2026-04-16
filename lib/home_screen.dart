@@ -183,7 +183,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       // No need to keep hitting the backend every 2 seconds when the button is
       // already enabled. Polling restarts when user returns from the
       // recommendations screen (see .then(_) handler in _getTodaysRecommendations).
-      if (status.status == 'ready') {
+      if (status.status == 'ready' || _isExperimentComplete) {
         _stopStatusPolling();
       }
 
@@ -289,7 +289,15 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           _isExperimentComplete = isExperimentComplete;
           _totalRecommendationsGenerated = totalRecommendationsGenerated;
           _currentCycleNumber = currentCycleNumber;
+          // When experiment is complete, clear the countdown timer
+          if (isExperimentComplete) {
+            _waitingMinutes = null;
+            _nextRecommendationDeadline = null;
+          }
         });
+        if (isExperimentComplete) {
+          _stopStatusPolling();
+        }
         
         print('[PHASE_D] Experiment status: complete=$isExperimentComplete, total=$totalRecommendationsGenerated, cycle=$currentCycleNumber');
       }
@@ -559,8 +567,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     // Progress Counter Widget
                     _buildProgressCounterWidget(context, colorScheme, theme),
                     const SizedBox(height: 50.0),
-                    // Status indicator (if generation is in progress)
-                    if (_currentStatus?.isGenerating == true)
+                    // Status indicator (if generation is in progress, and experiment not yet complete)
+                    if (_currentStatus?.isGenerating == true && !_isExperimentComplete)
                       Padding(
                         padding: const EdgeInsets.only(bottom: 16.0),
                         child: Container(
@@ -618,7 +626,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                           'Continue Rating (${_cachedRecommendations!.length} left)',
                         ),
                       )
-                    else if (_waitingMinutes != null && _waitingMinutes! > 0)
+                    else if (!_isExperimentComplete && _waitingMinutes != null && _waitingMinutes! > 0)
                       // Show countdown timer immediately using loaded value from SharedPreferences
                       // This shows countdown while generation is happening in the background
                       CountdownButton(
@@ -637,7 +645,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                           });
                         },
                       )
-                    else if (_currentStatus?.waitingMinutes != null &&
+                    else if (!_isExperimentComplete && _currentStatus?.waitingMinutes != null &&
                         _currentStatus!.waitingMinutes! > 0)
                       // Fallback: Show countdown timer from status if loaded value expired
                       CountdownButton(

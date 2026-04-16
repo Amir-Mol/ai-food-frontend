@@ -45,6 +45,10 @@ class _TutorialScreenState extends State<TutorialScreen> {
   void initState() {
     super.initState();
     _pageController = PageController();
+    // Mark tutorial as seen immediately — handles any exit path including back button
+    SharedPreferences.getInstance().then((prefs) {
+      prefs.setBool('has_seen_tutorial', true);
+    });
   }
 
   @override
