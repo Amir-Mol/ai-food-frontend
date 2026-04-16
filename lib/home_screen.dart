@@ -35,6 +35,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   bool _isExperimentComplete = false;
   int _totalRecommendationsGenerated = 0;  // PHASE D: Track total recommendations
   int _currentCycleNumber = 0;              // PHASE D: Track current cycle
+  String _userGroup = 'transparency';       // Group assignment: 'control' or 'transparency'
   List<AiRecommendation>? _cachedRecommendations;
   int _totalFeedbacksSubmitted = 0;
   
@@ -280,6 +281,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         final bool isExperimentComplete = data['isExperimentComplete'] ?? false;
         final int totalRecommendationsGenerated = data['totalRecommendationsGenerated'] ?? 0;
         final int currentCycleNumber = data['currentCycleNumber'] ?? 0;
+        final String userGroup = data['group'] ?? 'transparency';
 
         setState(() {
           _userName = (serverName != null && serverName.isNotEmpty)
@@ -289,6 +291,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           _isExperimentComplete = isExperimentComplete;
           _totalRecommendationsGenerated = totalRecommendationsGenerated;
           _currentCycleNumber = currentCycleNumber;
+          _userGroup = userGroup;
           // When experiment is complete, clear the countdown timer
           if (isExperimentComplete) {
             _waitingMinutes = null;
@@ -349,7 +352,19 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           // Extract recommendations array
           final recsList = jsonResponse['recommendations'] as List?;
           if (recsList == null || recsList.isEmpty) {
-            throw Exception('No recommendations in response');
+            // Server responded OK but has no recommendations (inconsistent state on server).
+            // Restart polling so the status endpoint can detect and reset the state.
+            print('[RECOMMENDATIONS] ⚠️ Server returned empty recommendations list — refreshing status');
+            _startStatusPolling();
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Recommendations not ready yet. Please wait a moment and try again.'),
+                  backgroundColor: Colors.orangeAccent,
+                ),
+              );
+            }
+            return;
           }
           
           print('[RECOMMENDATIONS] Parsing ${recsList.length} recommendations...');
@@ -380,8 +395,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             MaterialPageRoute(
               builder: (context) => RecommendationResultsScreen(
                 recommendations: recommendations,
-                currentCycleNumber: _currentCycleNumber,          // PHASE D
-                totalRecommendationsGenerated: _totalRecommendationsGenerated,  // PHASE D
+                currentCycleNumber: _currentCycleNumber,
+                totalRecommendationsGenerated: _totalRecommendationsGenerated,
+                showTransparencyFeatures: _userGroup == 'transparency',
               ),
             ),
           ).then((_) {
@@ -476,8 +492,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       MaterialPageRoute(
         builder: (context) => RecommendationResultsScreen(
           recommendations: _cachedRecommendations!,
-          currentCycleNumber: _currentCycleNumber,          // PHASE D
-          totalRecommendationsGenerated: _totalRecommendationsGenerated,  // PHASE D
+          currentCycleNumber: _currentCycleNumber,
+          totalRecommendationsGenerated: _totalRecommendationsGenerated,
+          showTransparencyFeatures: _userGroup == 'transparency',
         ),
       ),
     );

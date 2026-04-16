@@ -12,10 +12,12 @@ import 'package:ai_food_app/login_screen.dart';
 import 'package:ai_food_app/home_screen.dart';
 class RecommendationDetailScreen extends StatefulWidget {
   final AiRecommendation recommendation;
+  final bool showTransparencyFeatures;
 
   const RecommendationDetailScreen({
     super.key,
     required this.recommendation,
+    this.showTransparencyFeatures = true,
   });
 
   @override
@@ -324,8 +326,8 @@ class _RecommendationDetailScreenState
               ),
 
               // iv. Conditional Transparency Block
-              // Use healthScore as the definitive check for the transparency group
-              if (widget.recommendation.healthScore > 0.0)
+              // Only shown for users in the 'transparency' group
+              if (widget.showTransparencyFeatures)
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
                   child: Container(

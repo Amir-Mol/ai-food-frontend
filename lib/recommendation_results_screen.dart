@@ -17,12 +17,14 @@ class RecommendationResultsScreen extends StatefulWidget {
   final List<AiRecommendation> recommendations;
   final int currentCycleNumber;                    // PHASE D: Current cycle (1-20)
   final int totalRecommendationsGenerated;         // PHASE D: Total recommendations (0-100)
+  final bool showTransparencyFeatures;             // True for 'transparency' group
 
   const RecommendationResultsScreen({
     super.key,
     required this.recommendations,
-    this.currentCycleNumber = 0,                   // PHASE D: Default to 0
-    this.totalRecommendationsGenerated = 0,        // PHASE D: Default to 0
+    this.currentCycleNumber = 0,
+    this.totalRecommendationsGenerated = 0,
+    this.showTransparencyFeatures = true,          // Default to showing features
   });
 
   @override
@@ -177,13 +179,14 @@ class _RecommendationResultsScreenState
                     final recommendation = _localRecommendations[index];
                     return RecommendationCard(
                       recommendation: recommendation,
-                      showTransparencyFeatures: recommendation.healthScore > 0.0,
+                      showTransparencyFeatures: widget.showTransparencyFeatures,
                       onTap: () async {
                         final result = await Navigator.push(
                           context,
                           MaterialPageRoute(
                             builder: (context) => RecommendationDetailScreen(
                               recommendation: recommendation,
+                              showTransparencyFeatures: widget.showTransparencyFeatures,
                             ),
                           ),
                         );
