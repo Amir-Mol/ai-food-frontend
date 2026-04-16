@@ -15,6 +15,7 @@ import 'package:ai_food_app/services/notification_service.dart';
 import 'package:ai_food_app/services/recommendation_service.dart';
 import 'package:ai_food_app/models/recommendation_status.dart';
 import 'package:ai_food_app/widgets/countdown_button.dart';
+import 'package:ai_food_app/survey_screen.dart';
 
 /// HomeScreen is the main dashboard screen displayed after a user logs in.
 ///
@@ -33,6 +34,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   bool _isLoadingProfile = true;
   String _userName = 'User';
   bool _isExperimentComplete = false;
+  bool _surveyComplete = false;
   int _totalRecommendationsGenerated = 0;  // PHASE D: Track total recommendations
   int _currentCycleNumber = 0;              // PHASE D: Track current cycle
   String _userGroup = 'transparency';       // Group assignment: 'control' or 'transparency'
@@ -282,6 +284,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         final int totalRecommendationsGenerated = data['totalRecommendationsGenerated'] ?? 0;
         final int currentCycleNumber = data['currentCycleNumber'] ?? 0;
         final String userGroup = data['group'] ?? 'transparency';
+        final bool surveyComplete = data['surveyComplete'] ?? false;
 
         setState(() {
           _userName = (serverName != null && serverName.isNotEmpty)
@@ -292,6 +295,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           _totalRecommendationsGenerated = totalRecommendationsGenerated;
           _currentCycleNumber = currentCycleNumber;
           _userGroup = userGroup;
+          _surveyComplete = surveyComplete;
           // When experiment is complete, clear the countdown timer
           if (isExperimentComplete) {
             _waitingMinutes = null;
@@ -702,12 +706,37 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       visible: _isExperimentComplete,
                       child: Padding(
                         padding: const EdgeInsets.only(top: 16.0),
-                        child: Text(
-                          "Thank you for completing all recommendations for this phase of our research!",
-                          textAlign: TextAlign.center,
-                          style: theme.textTheme.bodyLarge
-                              ?.copyWith(color: colorScheme.onSurfaceVariant),
-                        ),
+                        child: _surveyComplete
+                            ? Text(
+                                "✅ Thank you! Your participation in our research is complete.",
+                                textAlign: TextAlign.center,
+                                style: theme.textTheme.bodyLarge
+                                    ?.copyWith(color: colorScheme.onSurfaceVariant),
+                              )
+                            : Column(
+                                children: [
+                                  Text(
+                                    "You've completed all recommendations! Please take the final survey.",
+                                    textAlign: TextAlign.center,
+                                    style: theme.textTheme.bodyLarge
+                                        ?.copyWith(color: colorScheme.onSurfaceVariant),
+                                  ),
+                                  const SizedBox(height: 12),
+                                  FilledButton(
+                                    onPressed: () {
+                                      Navigator.push(
+                                        context,
+                                        MaterialPageRoute(
+                                          builder: (_) => SurveyScreen(
+                                            isTransparencyGroup: _userGroup == 'transparency',
+                                          ),
+                                        ),
+                                      );
+                                    },
+                                    child: const Text('Take Final Survey →'),
+                                  ),
+                                ],
+                              ),
                       ),
                     ),
                     const Spacer(), // Pushes the bottom navigation bar placeholder to the bottom

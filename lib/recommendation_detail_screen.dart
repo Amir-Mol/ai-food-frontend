@@ -10,6 +10,7 @@ import 'package:ai_food_app/widgets/compact_fsa_score_bar.dart';
 import 'package:ai_food_app/config.dart';
 import 'package:ai_food_app/login_screen.dart';
 import 'package:ai_food_app/home_screen.dart';
+import 'package:ai_food_app/survey_screen.dart';
 class RecommendationDetailScreen extends StatefulWidget {
   final AiRecommendation recommendation;
   final bool showTransparencyFeatures;
@@ -30,6 +31,10 @@ class _RecommendationDetailScreenState
   bool _isSubmittingFeedback = false;
   bool _isIngredientsExpanded = false;
 
+  // Engagement tracking
+  late DateTime _screenEnteredAt;
+  bool _didOpenRecipeUrl = false;
+
   // State for the new two-stage feedback system
   bool? _likedStatus; // null = no selection, true = liked, false = disliked
   int _healthScore = 0;
@@ -39,6 +44,7 @@ class _RecommendationDetailScreenState
   @override
   void initState() {
     super.initState();
+    _screenEnteredAt = DateTime.now();
   }
 
   @override
@@ -76,6 +82,9 @@ class _RecommendationDetailScreenState
           SnackBar(content: Text('Could not launch $cleanUrlString')),
         );
       }
+    } else {
+      // Record that the user opened the recipe URL
+      setState(() => _didOpenRecipeUrl = true);
     }
   }
 
@@ -122,11 +131,14 @@ class _RecommendationDetailScreenState
       final url = Uri.parse('${AppConfig.apiBaseUrl}/api/recommendations/${widget.recommendation.recipeId}/feedback');
 
       // Part C: Update the requestBody map
+      final int timeSpentSeconds = DateTime.now().difference(_screenEnteredAt).inSeconds;
       final requestBody = {
         'liked': _likedStatus!,
         'healthinessScore': _healthScore,
         'tastinessScore': _tastinessScore,
         'intentToTryScore': _intentScore,
+        'timeSpentSeconds': timeSpentSeconds,
+        'didOpenRecipeUrl': _didOpenRecipeUrl,
       };
 
       final response = await http.post(
@@ -170,39 +182,49 @@ class _RecommendationDetailScreenState
         // Increment the global progress counter
         await _incrementProgressCounter();
         
-        // PHASE C Step 11: Detect 5th feedback and auto-trigger
-        // Check if response indicates this was the 5th feedback
+        // PHASE C Step 11: Detect 5th feedback / experiment complete
         bool isFifthFeedback = false;
+        bool isExperimentComplete = false;
         try {
           final responseBody = jsonDecode(response.body);
           isFifthFeedback = responseBody['isFifthFeedback'] == true;
-          print('Feedback response: isFifthFeedback=$isFifthFeedback, feedbackCount=${responseBody['feedbackCount']}');
+          isExperimentComplete = responseBody['isExperimentComplete'] == true;
+          print('Feedback response: isFifthFeedback=$isFifthFeedback, isExperimentComplete=$isExperimentComplete, feedbackCount=${responseBody['feedbackCount']}');
         } catch (e) {
-          print('Error checking isFifthFeedback from response: $e');
+          print('Error checking feedback flags from response: $e');
         }
-        
-// If this was the 5th feedback, navigate to HomeScreen
-        if (isFifthFeedback) {
-          print('✅ 5th feedback detected - navigating to HomeScreen');
-          
-          // Clear the recommendations cache so HomeScreen doesn't show stale
-          // "Continue Rating (1 left)" for the item we just rated.
-          try {
-            final prefs = await SharedPreferences.getInstance();
-            await prefs.remove('cached_recommendations');
-          } catch (e) {
-            print('Error clearing recommendations cache: $e');
+
+        // Clear cache
+        try {
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.remove('cached_recommendations');
+          if (isExperimentComplete) {
+            // Mark survey as pending so app resumes here on next launch
+            await prefs.setBool('surveyPending', true);
           }
-          
-          if (!mounted) return;
-          
-          // Navigate directly to HomeScreen (replacing the entire stack)
-          // HomeScreen will show countdown timer and auto-trigger when ready
+        } catch (e) {
+          print('Error updating SharedPreferences after feedback: $e');
+        }
+
+        if (!mounted) return;
+
+        if (isExperimentComplete) {
+          // 100th feedback — navigate to survey
+          print('✅ Experiment complete - navigating to SurveyScreen');
+          Navigator.of(context).pushAndRemoveUntil(
+            MaterialPageRoute(
+              builder: (_) => SurveyScreen(
+                isTransparencyGroup: widget.showTransparencyFeatures,
+              ),
+            ),
+            (route) => false,
+          );
+        } else if (isFifthFeedback) {
+          print('✅ 5th feedback detected - navigating to HomeScreen');
           Navigator.of(context).pushAndRemoveUntil(
             MaterialPageRoute(builder: (context) => const HomeScreen()),
             (Route<dynamic> route) => false,
           );
-          print('Navigated to HomeScreen');
         } else {
           // Not 5th feedback - normal pop behavior (return to recommendations list)
           Navigator.pop(context, true);

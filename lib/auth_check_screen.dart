@@ -4,6 +4,10 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:ai_food_app/home_screen.dart';
 import 'package:ai_food_app/welcome_screen.dart';
 import 'package:ai_food_app/tutorial_screen.dart';
+import 'package:ai_food_app/survey_screen.dart';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
+import 'package:ai_food_app/config.dart';
 
 /// A screen that checks the user's authentication status on app startup.
 ///
@@ -35,26 +39,77 @@ class _AuthCheckScreenState extends State<AuthCheckScreen> {
     if (!mounted) return;
 
     if (token != null) {
-      // If a token exists, the user is considered logged in.
-      // Check if the user has already seen the tutorial.
       final prefs = await SharedPreferences.getInstance();
       final hasSeen = prefs.getBool('has_seen_tutorial') ?? false;
 
-      if (hasSeen) {
-        // User has seen the tutorial, go to HomeScreen
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (context) => const HomeScreen()),
-        );
-      } else {
-        // User is new or hasn't seen the tutorial, go to TutorialScreen
+      if (!hasSeen) {
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(builder: (context) => const TutorialScreen()),
         );
+        return;
       }
+
+      // Check if survey is pending (locally flagged OR confirmed from server)
+      final surveyPendingLocal = prefs.getBool('surveyPending') ?? false;
+      if (surveyPendingLocal) {
+        // Verify with server and get group info to show correct questions
+        try {
+          final surveyStatusResponse = await http.get(
+            Uri.parse('${AppConfig.apiBaseUrl}/api/survey/status'),
+            headers: {'Authorization': 'Bearer $token'},
+          ).timeout(const Duration(seconds: 8));
+
+          if (surveyStatusResponse.statusCode == 200) {
+            final body = jsonDecode(surveyStatusResponse.body);
+            final surveyPending = body['surveyPending'] == true;
+            final surveyComplete = body['surveyComplete'] == true;
+
+            if (surveyComplete) {
+              // Survey was actually already submitted (e.g. on another device)
+              await prefs.setBool('surveyPending', false);
+            } else if (surveyPending) {
+              // Get group from profile
+              bool isTransparency = true;
+              try {
+                final profileResponse = await http.get(
+                  Uri.parse('${AppConfig.apiBaseUrl}/api/user/profile'),
+                  headers: {'Authorization': 'Bearer $token'},
+                ).timeout(const Duration(seconds: 8));
+                if (profileResponse.statusCode == 200) {
+                  final profileBody = jsonDecode(profileResponse.body);
+                  isTransparency = (profileBody['group'] ?? 'transparency') == 'transparency';
+                }
+              } catch (_) {}
+
+              if (!mounted) return;
+              Navigator.pushReplacement(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => SurveyScreen(isTransparencyGroup: isTransparency),
+                ),
+              );
+              return;
+            }
+          }
+        } catch (_) {
+          // Network error — still show survey (local flag is reliable enough)
+          if (!mounted) return;
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(
+              builder: (_) => const SurveyScreen(isTransparencyGroup: true),
+            ),
+          );
+          return;
+        }
+      }
+
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (context) => const HomeScreen()),
+      );
     } else {
-      // If no token, the user needs to log in or register.
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(builder: (context) => const WelcomeScreen()),
