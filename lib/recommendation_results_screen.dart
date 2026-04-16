@@ -203,8 +203,10 @@ class _RecommendationResultsScreenState
 
                           // Check if the list is now empty.
                           if (_localRecommendations.isEmpty) {
-                            // Schedule notification for batch complete (Tomorrow at 6 PM)
-                            await NotificationService().scheduleBatchCompleteNotification();
+                            // Note: the "recommendations ready" notification is
+                            // scheduled from HomeScreen._pollStatus() when the
+                            // backend rate-limit activates — that is the reliable
+                            // moment when waitingMinutes is known.
 
                             // If waitingMinutes is set, stay on this screen
                             // Otherwise, navigate to HomeScreen

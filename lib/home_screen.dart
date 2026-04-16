@@ -81,14 +81,22 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.paused) {
-      // User minimized the app -> SCHEDULE
+      // Stop polling so network calls don't fire while backgrounded.
+      _stopStatusPolling();
       print("App paused - Scheduling notification...");
-      _handleAppPaused(); 
-    } 
+      _handleAppPaused();
+    }
     else if (state == AppLifecycleState.resumed) {
-      // User came back -> CANCEL
-      print("App resumed - Cancelling notifications...");
-      NotificationService().cancelAllNotifications();
+      // User came back -> cancel only the "unrated meals" banner (ID=1).
+      // Do NOT cancel ID=2 — the scheduled "ready" alarm must stay alive.
+      print("App resumed - Cancelling unrated meals notification...");
+      NotificationService().cancelUnratedMealsNotification();
+      // Restart polling only if it was active before (i.e. status is not idle/ready).
+      if (_currentStatus != null &&
+          _currentStatus!.status != 'idle' &&
+          _currentStatus!.status != 'ready') {
+        _startStatusPolling();
+      }
     }
   }
 
@@ -174,13 +182,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       if (!mounted) return;
       
       print('[STATUS_POLLING] Status: ${status.status}, canGenerate: ${status.canGenerateNow}');
-      
+
       // Update UI with new status
       setState(() {
         _currentStatus = status;
       });
       
-      // Phase B Step 7: update UI with status - user must manually tap "Find a Meal" button
+      // Phase B Step 7: update ui with status - user must manually tap "Find a Meal" button
 
       // Flaw 5 fix: stop polling once recommendations are ready.
       // No need to keep hitting the backend every 2 seconds when the button is

@@ -3,13 +3,18 @@ import 'package:timezone/timezone.dart' as tz;
 import 'package:timezone/data/latest.dart' as tzdata;
 import 'package:flutter_timezone/flutter_timezone.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'dart:typed_data';
 import 'package:permission_handler/permission_handler.dart';
 
 class NotificationService {
   static final NotificationService _instance = NotificationService._internal();
+
+  // Legacy channel — kept so existing installs don't break; no longer posted to.
   static const String channelId = 'nutri_recom_channel';
   static const String channelName = 'NutriRecom Notifications';
+
+  // Silent channel — used for all notifications (won't wake users at night).
+  static const String silentChannelId = 'nutri_recom_silent_channel';
+  static const String silentChannelName = 'NutriRecom Silent Notifications';
 
   late FlutterLocalNotificationsPlugin _flutterLocalNotificationsPlugin;
 
@@ -33,10 +38,8 @@ Future<void> initialize() async {
       
       // Detect and set device's actual timezone using flutter_timezone
       try {
-        final timezoneData = await FlutterTimezone.getLocalTimezone();
-        // TimezoneInfo.toString() returns: "TimezoneInfo(Europe/Kiev, (locale: en_US, name: ...))"
-        // We need to extract just the timezone ID (Europe/Kiev)
-        final String timezoneName = timezoneData.toString().split('(')[1].split(',')[0];
+        // getLocalTimezone() returns TimezoneInfo; .identifier is the IANA string e.g. "Europe/Helsinki"
+        final String timezoneName = (await FlutterTimezone.getLocalTimezone()).identifier;
         tz.setLocalLocation(tz.getLocation(timezoneName));
         print('✅ Device timezone detected: $timezoneName (${tz.local.name})');
       } catch (e) {
@@ -73,8 +76,8 @@ Future<void> initialize() async {
 
       // Request notification permission for Android 13+
       await requestPermissions();
-      
-      await _createNotificationChannel();
+
+      await _createNotificationChannels();
     } catch (e) {
       // CRITICAL: If anything goes wrong, log it but DON'T stop the app
       print('Notification Service Initialization Failed: $e');
@@ -98,20 +101,32 @@ Future<void> initialize() async {
     print("Notification Permission Status: $status");
   }
 
-  Future<void> _createNotificationChannel() async {
-    const AndroidNotificationChannel channel = AndroidNotificationChannel(
+  Future<void> _createNotificationChannels() async {
+    final androidPlugin = _flutterLocalNotificationsPlugin
+        .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
+
+    // Legacy high-importance channel — kept so existing installs aren't broken.
+    // No longer posted to; all new notifications use the silent channel below.
+    const AndroidNotificationChannel legacyChannel = AndroidNotificationChannel(
       channelId,
       channelName,
-      description: 'Notifications for NutriRecom app',
+      description: 'Notifications for NutriRecom app (legacy)',
       importance: Importance.high,
       enableVibration: true,
       playSound: true,
     );
+    await androidPlugin?.createNotificationChannel(legacyChannel);
 
-    await _flutterLocalNotificationsPlugin
-        .resolvePlatformSpecificImplementation<
-            AndroidFlutterLocalNotificationsPlugin>()
-        ?.createNotificationChannel(channel);
+    // Silent channel — appears in notification shade with no sound or vibration.
+    const AndroidNotificationChannel silentChannel = AndroidNotificationChannel(
+      silentChannelId,
+      silentChannelName,
+      description: 'Silent notifications for NutriRecom app',
+      importance: Importance.low,
+      enableVibration: false,
+      playSound: false,
+    );
+    await androidPlugin?.createNotificationChannel(silentChannel);
   }
 
   void _onNotificationResponse(NotificationResponse response) {
@@ -135,33 +150,31 @@ Future<void> initialize() async {
 
       // Only show if 3 hours have passed since last notification
       if (timeSinceLastNotification >= threeHoursMs) {
-        // Show notification immediately when app is minimized
+        // Show notification silently when app is minimized
         await _flutterLocalNotificationsPlugin.show(
           1,
           'NutriRecom',
           'You have unrated meals! Finish them to get new recommendations.',
-          NotificationDetails(
+          const NotificationDetails(
             android: AndroidNotificationDetails(
-              channelId,
-              channelName,
-              importance: Importance.high,
-              priority: Priority.high,
-              playSound: true,
-              enableVibration: true,
-              vibrationPattern: Int64List(4)..[0] = 0..[1] = 500..[2] = 250..[3] = 500,
+              silentChannelId,
+              silentChannelName,
+              importance: Importance.low,
+              priority: Priority.low,
+              playSound: false,
+              enableVibration: false,
             ),
-            iOS: const DarwinNotificationDetails(
-              sound: 'default.caf',
+            iOS: DarwinNotificationDetails(
               presentAlert: true,
-              presentBadge: true,
-              presentSound: true,
+              presentBadge: false,
+              presentSound: false,
             ),
           ),
         );
-        
+
         // Save the time we showed this notification
         await prefs.setInt('last_unfinished_notification_time', now.millisecondsSinceEpoch);
-        print('✅ Successfully sent unfinished batch notification');
+        print('✅ Successfully sent unfinished batch notification (silent)');
       } else {
         final minutesUntilNextNotification = (threeHoursMs - timeSinceLastNotification) ~/ 60000;
         print('⏭️ Notification cooldown: ready again in $minutesUntilNextNotification minutes');
@@ -171,96 +184,63 @@ Future<void> initialize() async {
     }
   }
 
-  Future<void> scheduleBatchCompleteNotification() async {
+  /// Schedules a silent notification to fire at exactly [scheduledTime] —
+  /// the moment the next batch of recommendations becomes available.
+  /// Cancels any previously pending "ready" notification first.
+  Future<void> scheduleRecommendationsReadyNotification(DateTime scheduledTime) async {
     try {
-      // Use device's current time in local timezone
-      final now = tz.TZDateTime.now(tz.local);
-      
-      // Calculate when 6:00 PM is
-      var scheduledTime = tz.TZDateTime(
-        tz.local,
-        now.year,
-        now.month,
-        now.day,
-        18,  // 6:00 PM
-        0,
-      );
-
-      // If it's already past 6 PM today, schedule for tomorrow
-      if (now.isAfter(scheduledTime)) {
-        scheduledTime = scheduledTime.add(const Duration(days: 1));
-      }
-      
-      print('Current time (local): $now');
-      print('6:00 PM scheduled time: $scheduledTime');
-      
-      // Check if we already showed this notification today
-      final prefs = await SharedPreferences.getInstance();
-      final lastShownTime = prefs.getInt('last_batch_complete_notification_time') ?? 0;
-      
-      // Get today's date at 6 PM for comparison
-      final todayAt6PM = tz.TZDateTime(
-        tz.local,
-        now.year,
-        now.month,
-        now.day,
-        18,
-        0,
-      );
-      
-      // If 6 PM hasn't occurred yet today, don't show the notification
-      if (now.isBefore(todayAt6PM)) {
-        print('⏭️ It is not yet 6:00 PM - notification scheduled to show at 6:00 PM');
+      if (!scheduledTime.isAfter(DateTime.now())) {
+        print('⏭️ Scheduled time is already past — skipping ready notification');
         return;
       }
-      
-      // Get today's date at midnight for checking if we showed this today
-      final todayAtMidnight = tz.TZDateTime(
-        tz.local,
-        now.year,
-        now.month,
-        now.day,
-        0,
-        0,
-      );
-      
-      // Only show if we haven't already shown this notification today
-      if (lastShownTime < todayAtMidnight.millisecondsSinceEpoch) {
-        // Show notification immediately when app is minimized at or after 6 PM
-        await _flutterLocalNotificationsPlugin.show(
-          2,
-          'NutriRecom',
-          'Ready for more? Get your new daily meal plan.',
-          NotificationDetails(
-            android: AndroidNotificationDetails(
-              channelId,
-              channelName,
-              importance: Importance.high,
-              priority: Priority.high,
-              playSound: true,
-              enableVibration: true,
-              vibrationPattern: Int64List(4)..[0] = 0..[1] = 500..[2] = 250..[3] = 500,
-            ),
-            iOS: const DarwinNotificationDetails(
-              sound: 'default.caf',
-              presentAlert: true,
-              presentBadge: true,
-              presentSound: true,
-            ),
+
+      final tzScheduledTime = tz.TZDateTime.from(scheduledTime.toUtc(), tz.UTC);
+
+      print('Scheduling "ready" notification for: $tzScheduledTime');
+
+      // Cancel any previously scheduled ready notification before re-scheduling.
+      await _flutterLocalNotificationsPlugin.cancel(2);
+
+      await _flutterLocalNotificationsPlugin.zonedSchedule(
+        2,
+        'NutriRecom',
+        'Your new meal recommendations are ready! Open the app to see them.',
+        tzScheduledTime,
+        const NotificationDetails(
+          android: AndroidNotificationDetails(
+            silentChannelId,
+            silentChannelName,
+            importance: Importance.low,
+            priority: Priority.low,
+            playSound: false,
+            enableVibration: false,
           ),
-        );
-        
-        // Save the time we showed this notification
-        await prefs.setInt('last_batch_complete_notification_time', now.millisecondsSinceEpoch);
-        print('✅ Successfully sent batch complete notification');
-      } else {
-        print('⏭️ Batch complete notification already shown today - will be ready tomorrow at 6:00 PM');
-      }
+          iOS: DarwinNotificationDetails(
+            presentAlert: true,
+            presentBadge: false,
+            presentSound: false,
+          ),
+        ),
+        androidScheduleMode: AndroidScheduleMode.inexact,
+        uiLocalNotificationDateInterpretation:
+            UILocalNotificationDateInterpretation.absoluteTime,
+      );
+
+      print('✅ "Ready" notification scheduled silently for $tzScheduledTime');
     } catch (e) {
-      print('Error sending batch complete notification: $e');
+      print('Error scheduling recommendations ready notification: $e');
     }
   }
 
+  /// Cancels only the "unrated meals" notification (ID=1).
+  /// Does NOT cancel the scheduled "ready" alarm (ID=2) — that must survive
+  /// app resume so it can still fire when the app is closed/minimized.
+  Future<void> cancelUnratedMealsNotification() async {
+    await _flutterLocalNotificationsPlugin.cancel(1);
+  }
+
+  /// Cancels every pending notification including the scheduled alarm.
+  /// Only call this when the experiment is complete or on logout.
   Future<void> cancelAllNotifications() async {
     await _flutterLocalNotificationsPlugin.cancelAll();
   }

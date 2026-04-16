@@ -11,6 +11,7 @@ import 'package:ai_food_app/config.dart';
 import 'package:ai_food_app/login_screen.dart';
 import 'package:ai_food_app/home_screen.dart';
 import 'package:ai_food_app/survey_screen.dart';
+import 'package:ai_food_app/services/notification_service.dart';
 class RecommendationDetailScreen extends StatefulWidget {
   final AiRecommendation recommendation;
   final bool showTransparencyFeatures;
@@ -221,6 +222,18 @@ class _RecommendationDetailScreenState
           );
         } else if (isFifthFeedback) {
           print('✅ 5th feedback detected - navigating to HomeScreen');
+          // Schedule silent notification for exactly when next batch unlocks.
+          // The deadline was saved to prefs moments ago from the feedback response.
+          try {
+            final notifPrefs = await SharedPreferences.getInstance();
+            final deadlineStr = notifPrefs.getString('nextAllowedGenerationDeadline');
+            if (deadlineStr != null) {
+              final deadline = DateTime.parse(deadlineStr);
+              await NotificationService().scheduleRecommendationsReadyNotification(deadline);
+            }
+          } catch (e) {
+            print('Error scheduling ready notification: $e');
+          }
           Navigator.of(context).pushAndRemoveUntil(
             MaterialPageRoute(builder: (context) => const HomeScreen()),
             (Route<dynamic> route) => false,
@@ -342,7 +355,7 @@ class _RecommendationDetailScreenState
                     const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
                 child: Text(
                   widget.recommendation.name,
-                  style: theme.textTheme.displaySmall
+                  style: theme.textTheme.headlineMedium
                       ?.copyWith(color: colorScheme.onSurface),
                 ),
               ),
